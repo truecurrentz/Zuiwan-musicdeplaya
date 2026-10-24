@@ -23,24 +23,24 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: "21"
           distribution: "temurin"
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
-      - name: Prepare Signing Keystore
+      - name: Accept Android SDK Licenses and Prepare Keystore
         env:
           SECRET_KEYSTORE: ${{ secrets.KEYSTORE }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          fi
           chmod +x gradlew
           mkdir -p app/keystore
           if [ -n "$SECRET_KEYSTORE" ]; then
@@ -62,20 +62,27 @@ jobs:
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
         run: |
-          ./gradlew --console=plain assembleDebug assembleRelease
+          set +e
+          ./gradlew --console=plain assembleDebug assembleRelease 2>&1 | tee build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            python3 -c 'import pathlib; lines = pathlib.Path("build.log").read_text(errors="replace").splitlines(); errs = [l for l in lines if l.startswith(("e: ", "FAILURE:", "* What went wrong:", "> "))]; msg = "\n".join(errs[-60:] if errs else lines[-60:])[-3800:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"); print(f"::error title=GradleBuild::{msg}")'
+            exit "$STATUS"
+          fi
           mkdir -p dist
           cp app/build/outputs/apk/debug/*.apk dist/Zuiwan-debug.apk
           cp app/build/outputs/apk/release/*.apk dist/Zuiwan.apk
           ls -lh dist/
 
       - name: Upload Release APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Zuiwan-release
           path: dist/Zuiwan.apk
 
       - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Zuiwan-debug
           path: dist/Zuiwan-debug.apk
