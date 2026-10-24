@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -46,18 +45,20 @@ import androidx.compose.ui.unit.sp
 import zuiwan.model.StatsSummary
 import zuiwan.model.StatsWindow
 import zuiwan.model.Track
+import zuiwan.model.fallbackart
+import zuiwan.model.trackart
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.ArtImage
-import zuiwan.ui.GlassBox
-import zuiwan.ui.GlassChip
-import zuiwan.ui.GlassTopBar
+import zuiwan.ui.artimage
+import zuiwan.ui.glass
+import zuiwan.ui.chip
+import zuiwan.ui.topbar
 import zuiwan.ui.Route
-import zuiwan.ui.ScrollHeaderHost
-import zuiwan.ui.SectionHeader
-import zuiwan.ui.SongRow
+import zuiwan.ui.scrollhost
+import zuiwan.ui.sectionbar
+import zuiwan.ui.songrow
 import zuiwan.ui.ZIcons
-import zuiwan.ui.rememberheaderscroll
+import zuiwan.ui.headerscroll
 import kotlin.math.roundToInt
 
 @Composable
@@ -68,11 +69,11 @@ fun viewstats(
     bottomPadding: PaddingValues,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     var window by remember { mutableStateOf(StatsWindow.MONTH) }
     var summary by remember { mutableStateOf(StatsSummary()) }
 
-    val headerScroll = rememberheaderscroll()
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
     val lifted by remember {
         derivedStateOf {
@@ -85,18 +86,18 @@ fun viewstats(
     }
 
     val ringColors = listOf(
-        glass.accent,
-        glass.accentSecondary,
+        glassTokens.accent,
+        glassTokens.accentSecondary,
         Color(0xFF34D399),
         Color(0xFFFBBF24),
     )
 
-    ScrollHeaderHost(
+    scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         header = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                GlassTopBar(
+                topbar(
                     title = "Stats",
                     subtitle = "Your top songs, artists, and playback history",
                     onBack = onBack,
@@ -104,7 +105,7 @@ fun viewstats(
                     Icon(
                         imageVector = ZIcons.Sparkles,
                         contentDescription = null,
-                        tint = glass.accent,
+                        tint = glassTokens.accent,
                         modifier = Modifier.size(22.dp),
                     )
                 }
@@ -116,7 +117,7 @@ fun viewstats(
                         .padding(start = 18.dp, end = 18.dp, bottom = 8.dp),
                 ) {
                     StatsWindow.entries.forEach { w ->
-                        GlassChip(
+                        chip(
                             label = w.label,
                             selected = window == w,
                             onClick = { window = w },
@@ -135,7 +136,7 @@ fun viewstats(
             modifier = Modifier.fillMaxSize(),
         ) {
             item(key = "hero_metrics") {
-                GlassBox(
+                glass(
                     shape = RoundedCornerShape(26.dp),
                     elevated = true,
                     contentPadding = PaddingValues(16.dp),
@@ -148,14 +149,14 @@ fun viewstats(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(20.dp))
-                                .background(glass.accentSoft)
+                                .background(glassTokens.accentSoft)
                                 .padding(horizontal = 18.dp, vertical = 18.dp),
                         ) {
                             Column {
                                 Text(
                                     text = "Total Time Listened",
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = glass.ink,
+                                    color = glassTokens.ink,
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 val hrs = summary.totalMinutes / 60L
@@ -165,14 +166,12 @@ fun viewstats(
                                     fontSize = 36.sp,
                                     lineHeight = 42.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = glass.ink,
+                                    color = glassTokens.ink,
                                 )
                             }
                         }
 
-                        Spacer(Modifier.height(14.dp))
-                        HorizontalDivider(color = glass.glassBorder.copy(alpha = 0.5f))
-                        Spacer(Modifier.height(14.dp))
+                        Spacer(Modifier.height(16.dp))
 
                         Row(
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -180,9 +179,9 @@ fun viewstats(
                                 .fillMaxWidth()
                                 .padding(horizontal = 4.dp),
                         ) {
-                            StatMiniCol("Total Plays", summary.totalPlays.toString(), Modifier.weight(1f))
-                            StatMiniCol("Unique Songs", summary.topTracks.size.toString(), Modifier.weight(1f))
-                            StatMiniCol("Unique Artists", summary.uniqueArtists.toString(), Modifier.weight(1f))
+                            statcol("Total Plays", summary.totalPlays.toString(), Modifier.weight(1f))
+                            statcol("Unique Songs", summary.topTracks.size.toString(), Modifier.weight(1f))
+                            statcol("Unique Artists", summary.uniqueArtists.toString(), Modifier.weight(1f))
                         }
                     }
                 }
@@ -191,12 +190,12 @@ fun viewstats(
             if (summary.topArtists.isNotEmpty()) {
                 item(key = "breakdown_head") {
                     Spacer(Modifier.height(6.dp))
-                    SectionHeader(title = "Artist breakdown")
+                    sectionbar(title = "Artist breakdown")
                 }
                 item(key = "breakdown_card") {
                     val topSlice = summary.topArtists.take(4)
                     val totalMs = topSlice.sumOf { it.totalTimeMs.coerceAtLeast(1L) }.toFloat().coerceAtLeast(1f)
-                    GlassBox(
+                    glass(
                         shape = RoundedCornerShape(26.dp),
                         elevated = true,
                         contentPadding = PaddingValues(20.dp),
@@ -246,7 +245,7 @@ fun viewstats(
                                         Text(
                                             text = stat.artist.name,
                                             style = MaterialTheme.typography.titleSmall,
-                                            color = glass.ink,
+                                            color = glassTokens.ink,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.weight(1f),
@@ -254,7 +253,7 @@ fun viewstats(
                                         Text(
                                             text = "$pct%",
                                             style = MaterialTheme.typography.labelMedium,
-                                            color = glass.inkSecondary,
+                                            color = glassTokens.inkSecondary,
                                         )
                                     }
                                 }
@@ -267,7 +266,7 @@ fun viewstats(
             val favArtist = summary.topArtists.firstOrNull()
             if (favArtist != null) {
                 item(key = "fav_artist") {
-                    GlassBox(
+                    glass(
                         shape = RoundedCornerShape(24.dp),
                         elevated = true,
                         onClick = {
@@ -281,7 +280,7 @@ fun viewstats(
                             .padding(horizontal = 18.dp, vertical = 6.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            ArtImage(
+                            artimage(
                                 url = favArtist.artist.artwork,
                                 shape = CircleShape,
                                 fallbackIcon = ZIcons.Artist,
@@ -292,20 +291,20 @@ fun viewstats(
                                 Text(
                                     text = "Your Favourite Artist",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = glass.accent,
+                                    color = glassTokens.accent,
                                 )
                                 Spacer(Modifier.height(2.dp))
                                 Text(
                                     text = favArtist.artist.name,
                                     style = MaterialTheme.typography.headlineSmall,
-                                    color = glass.ink,
+                                    color = glassTokens.ink,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
                                     text = "${favArtist.plays} plays - ${favArtist.totalTimeMs / 60_000L} min",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = glass.inkSecondary,
+                                    color = glassTokens.inkSecondary,
                                 )
                             }
                         }
@@ -316,7 +315,7 @@ fun viewstats(
             val favSong = summary.topTracks.firstOrNull()
             if (favSong != null) {
                 item(key = "fav_song") {
-                    GlassBox(
+                    glass(
                         shape = RoundedCornerShape(24.dp),
                         elevated = true,
                         onClick = { hub.pilot.audioplay(favSong.track, "Stats") },
@@ -326,8 +325,9 @@ fun viewstats(
                             .padding(horizontal = 18.dp, vertical = 6.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            ArtImage(
-                                url = favSong.track.artwork,
+                            artimage(
+                                url = favSong.track.trackart(),
+                                fallbackUrl = favSong.track.fallbackart(),
                                 shape = RoundedCornerShape(16.dp),
                                 modifier = Modifier.size(68.dp),
                             )
@@ -336,20 +336,20 @@ fun viewstats(
                                 Text(
                                     text = "Your Favourite Song",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = glass.accent,
+                                    color = glassTokens.accent,
                                 )
                                 Spacer(Modifier.height(2.dp))
                                 Text(
                                     text = favSong.track.title,
                                     style = MaterialTheme.typography.headlineSmall,
-                                    color = glass.ink,
+                                    color = glassTokens.ink,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
                                     text = "${favSong.plays} times - ${favSong.totalTimeMs / 60_000L} min",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = glass.inkSecondary,
+                                    color = glassTokens.inkSecondary,
                                 )
                             }
                         }
@@ -360,10 +360,10 @@ fun viewstats(
             if (summary.topTracks.isNotEmpty()) {
                 item(key = "tracks_head") {
                     Spacer(Modifier.height(8.dp))
-                    SectionHeader(title = "Top Tracks", subtitle = window.label)
+                    sectionbar(title = "Top Tracks", subtitle = window.label)
                 }
                 itemsIndexed(summary.topTracks, key = { _, it -> it.track.id }) { idx, stat ->
-                    SongRow(
+                    songrow(
                         track = stat.track,
                         indexNumber = idx + 1,
                         onClick = { hub.pilot.audioplay(stat.track, "Top Tracks") },
@@ -372,7 +372,7 @@ fun viewstats(
                             Text(
                                 text = "${stat.plays}x",
                                 style = MaterialTheme.typography.labelLarge,
-                                color = glass.accent,
+                                color = glassTokens.accent,
                                 modifier = Modifier.padding(end = 6.dp),
                             )
                         },
@@ -384,7 +384,7 @@ fun viewstats(
             if (summary.topArtists.isNotEmpty()) {
                 item(key = "artists_head") {
                     Spacer(Modifier.height(12.dp))
-                    SectionHeader(title = "Top Artists", subtitle = window.label)
+                    sectionbar(title = "Top Artists", subtitle = window.label)
                 }
                 itemsIndexed(summary.topArtists, key = { _, it -> it.artist.id }) { idx, stat ->
                     Row(
@@ -401,10 +401,10 @@ fun viewstats(
                         Text(
                             text = "${idx + 1}",
                             style = MaterialTheme.typography.labelLarge,
-                            color = glass.inkMuted,
+                            color = glassTokens.inkMuted,
                             modifier = Modifier.width(26.dp),
                         )
-                        ArtImage(
+                        artimage(
                             url = stat.artist.artwork,
                             shape = CircleShape,
                             fallbackIcon = ZIcons.Artist,
@@ -412,10 +412,10 @@ fun viewstats(
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(stat.artist.name, style = MaterialTheme.typography.titleMedium, color = glass.ink)
-                            Text("${stat.totalTimeMs / 60_000L} min listened", style = MaterialTheme.typography.bodyMedium, color = glass.inkSecondary)
+                            Text(stat.artist.name, style = MaterialTheme.typography.titleMedium, color = glassTokens.ink)
+                            Text("${stat.totalTimeMs / 60_000L} min listened", style = MaterialTheme.typography.bodyMedium, color = glassTokens.inkSecondary)
                         }
-                        Text("${stat.plays} plays", style = MaterialTheme.typography.labelLarge, color = glass.accent)
+                        Text("${stat.plays} plays", style = MaterialTheme.typography.labelLarge, color = glassTokens.accent)
                     }
                 }
             }
@@ -424,23 +424,23 @@ fun viewstats(
 }
 
 @Composable
-private fun StatMiniCol(
+private fun statcol(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     Column(modifier = modifier) {
         Text(
             text = value,
             style = MaterialTheme.typography.headlineSmall,
-            color = glass.accent,
+            color = glassTokens.accent,
         )
         Spacer(Modifier.height(2.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = glass.inkSecondary,
+            color = glassTokens.inkSecondary,
         )
     }
 }

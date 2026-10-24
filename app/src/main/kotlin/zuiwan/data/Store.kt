@@ -30,7 +30,7 @@ data class AppSettings(
     val speed: Float = 1.0f,
     val pitch: Float = 1.0f,
     val persistentQueue: Boolean = true,
-    val autoQueue: Boolean = true,
+    val autoRadio: Boolean = false,
     val pauseHistory: Boolean = false,
     val romanizeLyrics: Boolean = true,
     val contentCountry: String = "US",

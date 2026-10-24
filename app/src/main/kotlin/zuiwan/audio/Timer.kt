@@ -52,7 +52,7 @@ class SleepTimer(
         }
     }
 
-    fun notifytrackend(): Boolean {
+    fun trackended(): Boolean {
         val current = stateFlow.value
         if (current.active && current.finishTrack && current.remainingMs <= 0L) {
             cancelsleep()

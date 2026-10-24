@@ -59,7 +59,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
@@ -75,20 +74,22 @@ import zuiwan.model.ArtistSummary
 import zuiwan.model.PlaylistSummary
 import zuiwan.model.Track
 import zuiwan.model.artistline
+import zuiwan.model.fallbackart
+import zuiwan.model.trackart
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.ArtImage
-import zuiwan.ui.BrandBar
-import zuiwan.ui.GlassBox
-import zuiwan.ui.GlassChip
-import zuiwan.ui.GlassIconButton
-import zuiwan.ui.GlassPillButton
-import zuiwan.ui.PlaylistThumb
+import zuiwan.ui.artimage
+import zuiwan.ui.brandbar
+import zuiwan.ui.glass
+import zuiwan.ui.chip
+import zuiwan.ui.iconbtn
+import zuiwan.ui.pillbtn
+import zuiwan.ui.covergrid
 import zuiwan.ui.Route
-import zuiwan.ui.ScrollHeaderHost
-import zuiwan.ui.SongRow
+import zuiwan.ui.scrollhost
+import zuiwan.ui.songrow
 import zuiwan.ui.ZIcons
-import zuiwan.ui.rememberheaderscroll
+import zuiwan.ui.headerscroll
 
 private enum class LibFilter(val label: String) {
     LIBRARY("Library"),
@@ -153,7 +154,7 @@ fun viewlibrary(
     bottomPadding: PaddingValues,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val focusManager = LocalFocusManager.current
 
     val liked by hub.likedTracks.collectAsState()
@@ -176,14 +177,14 @@ fun viewlibrary(
     var showCreate by remember { mutableStateOf(false) }
     var draftName by remember { mutableStateOf("") }
 
-    val headerScroll = rememberheaderscroll()
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
 
     val importM3uLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
     ) { uri ->
-        if (uri != null) hub.importm3u(uri)
+        if (uri != null) hub.importlist(uri)
     }
 
     BackHandler(enabled = searchOpen || filter != LibFilter.LIBRARY) {
@@ -215,28 +216,28 @@ fun viewlibrary(
                 name = "Liked",
                 subtitle = "${liked.size} songs",
                 icon = ZIcons.HeartFilled,
-                thumbs = liked.mapNotNull { it.artwork.takeIf(String::isNotBlank) }.distinct().take(4),
+                thumbs = liked.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4),
             ),
             LibEntry.AutoEntry(
                 id = "auto_offline",
                 name = "Offline",
                 subtitle = "${downloads.size} songs",
                 icon = ZIcons.Offline,
-                thumbs = downloads.mapNotNull { it.artwork.takeIf(String::isNotBlank) }.distinct().take(4),
+                thumbs = downloads.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4),
             ),
             LibEntry.AutoEntry(
                 id = "auto_cached",
                 name = "Cached",
                 subtitle = "${history.size} songs",
                 icon = ZIcons.History,
-                thumbs = history.mapNotNull { it.artwork.takeIf(String::isNotBlank) }.distinct().take(4),
+                thumbs = history.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4),
             ),
             LibEntry.AutoEntry(
                 id = "auto_top",
                 name = "My Top 50",
                 subtitle = "${topTracks.ifEmpty { history }.take(50).size} songs",
                 icon = ZIcons.Trend,
-                thumbs = topTracks.ifEmpty { history }.mapNotNull { it.artwork.takeIf(String::isNotBlank) }.distinct().take(4),
+                thumbs = topTracks.ifEmpty { history }.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4),
             ),
         )
         if (cleanQuery.isBlank()) raw else raw.filter { it.name.lowercase().contains(cleanQuery) }
@@ -382,9 +383,9 @@ fun viewlibrary(
     if (showCreate) {
         AlertDialog(
             onDismissRequest = { showCreate = false },
-            containerColor = glass.glassStrong,
-            titleContentColor = glass.ink,
-            textContentColor = glass.ink,
+            containerColor = glassTokens.glassStrong,
+            titleContentColor = glassTokens.ink,
+            textContentColor = glassTokens.ink,
             title = { Text("New Playlist") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -400,15 +401,15 @@ fun viewlibrary(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(glass.glassElevated)
+                            .background(glassTokens.glassElevated)
                             .clickable {
                                 showCreate = false
                                 importM3uLauncher.launch("*/*")
                             }
                             .padding(horizontal = 12.dp, vertical = 9.dp),
                     ) {
-                        Icon(ZIcons.Playlist, null, tint = glass.accent, modifier = Modifier.size(17.dp))
-                        Text("Import .m3u playlist file", style = MaterialTheme.typography.labelLarge, color = glass.ink)
+                        Icon(ZIcons.Playlist, null, tint = glassTokens.accent, modifier = Modifier.size(17.dp))
+                        Text("Import .m3u playlist file", style = MaterialTheme.typography.labelLarge, color = glassTokens.ink)
                     }
                 }
             },
@@ -424,31 +425,31 @@ fun viewlibrary(
                         }
                     },
                 ) {
-                    Text("Create", color = glass.accent)
+                    Text("Create", color = glassTokens.accent)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showCreate = false }) {
-                    Text("Cancel", color = glass.inkSecondary)
+                    Text("Cancel", color = glassTokens.inkSecondary)
                 }
             },
         )
     }
 
-    ScrollHeaderHost(
+    scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         header = {
-            BrandBar {
-                GlassIconButton(
+            brandbar {
+                iconbtn(
                     icon = ZIcons.Equalizer,
                     onClick = { onNavigate(Route.Equalizer) },
                 )
-                GlassIconButton(
+                iconbtn(
                     icon = ZIcons.Add,
                     onClick = { showCreate = true },
                 )
-                GlassIconButton(
+                iconbtn(
                     icon = ZIcons.Settings,
                     onClick = { onNavigate(Route.Settings) },
                 )
@@ -506,7 +507,7 @@ fun viewlibrary(
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 6.dp),
                             ) {
-                                GlassPillButton(
+                                pillbtn(
                                     text = "Play all",
                                     icon = ZIcons.Play,
                                     primary = true,
@@ -515,12 +516,11 @@ fun viewlibrary(
                                             filteredSongs,
                                             0,
                                             songScope.label,
-                                            fetchRadio = songScope != SongScope.DOWNLOADED,
                                         )
                                     },
                                     modifier = Modifier.weight(1f),
                                 )
-                                GlassPillButton(
+                                pillbtn(
                                     text = "Shuffle",
                                     icon = ZIcons.Shuffle,
                                     onClick = {
@@ -528,7 +528,6 @@ fun viewlibrary(
                                             filteredSongs.shuffled(),
                                             0,
                                             songScope.label,
-                                            fetchRadio = songScope != SongScope.DOWNLOADED,
                                         )
                                     },
                                     modifier = Modifier.weight(1f),
@@ -537,7 +536,7 @@ fun viewlibrary(
                         }
 
                         items(filteredSongs, key = { it.id }) { song ->
-                            SongRow(
+                            songrow(
                                 track = song,
                                 playing = playback.current?.id == song.id,
                                 onClick = {
@@ -546,7 +545,6 @@ fun viewlibrary(
                                         filteredSongs,
                                         idx,
                                         songScope.label,
-                                        fetchRadio = songScope != SongScope.DOWNLOADED,
                                     )
                                 },
                                 onMore = { onTrackMenu(song) },
@@ -620,7 +618,7 @@ fun viewlibrary(
                         }
                     } else {
                         items(mixEntries, key = { it.key }) { entry ->
-                            libgriditem(
+                            griditem(
                                 entry = entry,
                                 playingId = playback.current?.id,
                                 onNavigate = onNavigate,
@@ -680,7 +678,7 @@ fun viewlibrary(
                         }
                     } else {
                         items(mixEntries, key = { it.key }) { entry ->
-                            liblistitem(
+                            listitem(
                                 entry = entry,
                                 playingId = playback.current?.id,
                                 onNavigate = onNavigate,
@@ -707,20 +705,14 @@ fun viewlibrary(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .size(54.dp)
-                        .shadow(
-                            elevation = 12.dp,
-                            shape = RoundedCornerShape(18.dp),
-                            ambientColor = glass.accent.copy(alpha = 0.32f),
-                            spotColor = glass.accent.copy(alpha = 0.32f),
-                        )
                         .clip(RoundedCornerShape(18.dp))
-                        .background(glass.accent)
+                        .background(glassTokens.accent)
                         .clickable { showCreate = true },
                 ) {
                     Icon(
                         imageVector = ZIcons.Add,
                         contentDescription = "New playlist",
-                        tint = glass.onAccent,
+                        tint = glassTokens.onAccent,
                         modifier = Modifier.size(24.dp),
                     )
                 }
@@ -752,14 +744,14 @@ private fun libchips(
                 LibFilter.ALBUMS,
                 LibFilter.ARTISTS,
             ).forEach { target ->
-                GlassChip(
+                chip(
                     label = target.label,
                     selected = false,
                     onClick = { onSelectFilter(target) },
                 )
             }
         } else {
-            GlassChip(
+            chip(
                 label = filter.label,
                 selected = true,
                 leadingIcon = ZIcons.Close,
@@ -767,14 +759,14 @@ private fun libchips(
             )
             if (filter == LibFilter.SONGS) {
                 SongScope.entries.forEach { scope ->
-                    GlassChip(
+                    chip(
                         label = scope.label,
                         selected = songScope == scope,
                         onClick = { onSelectSongScope(scope) },
                     )
                 }
             } else if (filter == LibFilter.PLAYLISTS) {
-                GlassChip(
+                chip(
                     label = "Import M3U",
                     selected = false,
                     leadingIcon = ZIcons.Playlist,
@@ -803,7 +795,7 @@ private fun libtoolbar(
     onToggleGrid: () -> Unit,
     horizontalPad: androidx.compose.ui.unit.Dp = 16.dp,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val focusRequester = remember { FocusRequester() }
     var sortMenuOpen by remember { mutableStateOf(false) }
 
@@ -812,7 +804,7 @@ private fun libtoolbar(
     }
 
     if (searchOpen) {
-        GlassBox(
+        glass(
             shape = RoundedCornerShape(999.dp),
             elevated = true,
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
@@ -827,7 +819,7 @@ private fun libtoolbar(
                 Icon(
                     imageVector = ZIcons.Search,
                     contentDescription = null,
-                    tint = glass.inkSecondary,
+                    tint = glassTokens.inkSecondary,
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(10.dp))
@@ -836,15 +828,15 @@ private fun libtoolbar(
                         Text(
                             text = "Search in library",
                             style = MaterialTheme.typography.bodyLarge,
-                            color = glass.inkSecondary,
+                            color = glassTokens.inkSecondary,
                         )
                     }
                     BasicTextField(
                         value = query,
                         onValueChange = onQueryChange,
                         singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = glass.ink),
-                        cursorBrush = SolidColor(glass.accent),
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = glassTokens.ink),
+                        cursorBrush = SolidColor(glassTokens.accent),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = {}),
                         modifier = Modifier
@@ -852,7 +844,7 @@ private fun libtoolbar(
                             .focusRequester(focusRequester),
                     )
                 }
-                GlassIconButton(
+                iconbtn(
                     icon = ZIcons.Close,
                     onClick = onCloseSearch,
                     size = 30.dp,
@@ -878,27 +870,27 @@ private fun libtoolbar(
                     Text(
                         text = sortType.label,
                         style = MaterialTheme.typography.labelLarge,
-                        color = glass.accent,
+                        color = glassTokens.accent,
                     )
                     Spacer(Modifier.width(4.dp))
                     Icon(
                         imageVector = ZIcons.ChevronDown,
                         contentDescription = null,
-                        tint = glass.accent,
+                        tint = glassTokens.accent,
                         modifier = Modifier.size(15.dp),
                     )
                 }
                 DropdownMenu(
                     expanded = sortMenuOpen,
                     onDismissRequest = { sortMenuOpen = false },
-                    containerColor = glass.glassStrong,
+                    containerColor = glassTokens.glassStrong,
                 ) {
                     sortOptions.forEach { opt ->
                         DropdownMenuItem(
                             text = {
                                 Text(
                                     text = opt.label,
-                                    color = if (opt == sortType) glass.accent else glass.ink,
+                                    color = if (opt == sortType) glassTokens.accent else glassTokens.ink,
                                 )
                             },
                             onClick = {
@@ -910,12 +902,12 @@ private fun libtoolbar(
                 }
             }
 
-            GlassIconButton(
+            iconbtn(
                 icon = if (sortDesc) ZIcons.ArrowDown else ZIcons.ArrowUp,
                 onClick = onToggleSortDir,
                 size = 34.dp,
                 iconSize = 16.dp,
-                tint = glass.inkSecondary,
+                tint = glassTokens.inkSecondary,
             )
 
             Spacer(Modifier.weight(1f))
@@ -924,12 +916,12 @@ private fun libtoolbar(
                 Text(
                     text = countLabel,
                     style = MaterialTheme.typography.labelMedium,
-                    color = glass.inkSecondary,
+                    color = glassTokens.inkSecondary,
                     modifier = Modifier.padding(end = 4.dp),
                 )
             }
 
-            GlassIconButton(
+            iconbtn(
                 icon = ZIcons.Search,
                 onClick = onOpenSearch,
                 size = 38.dp,
@@ -937,7 +929,7 @@ private fun libtoolbar(
             )
 
             if (showGridToggle) {
-                GlassIconButton(
+                iconbtn(
                     icon = if (gridView) ZIcons.List else ZIcons.Grid,
                     onClick = onToggleGrid,
                     size = 38.dp,
@@ -949,13 +941,13 @@ private fun libtoolbar(
 }
 
 @Composable
-private fun libgriditem(
+private fun griditem(
     entry: LibEntry,
     playingId: String?,
     onNavigate: (Route) -> Unit,
     onPlaySong: (Track) -> Unit,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     when (entry) {
         is LibEntry.AutoEntry -> {
             Column(
@@ -965,10 +957,10 @@ private fun libgriditem(
                     .clickable { onNavigate(Route.Playlist(entry.id, local = true)) }
                     .padding(6.dp),
             ) {
-                PlaylistThumb(
+                covergrid(
                     thumbnails = entry.thumbs,
                     fallbackIcon = entry.icon,
-                    preferIcon = true,
+                    preferIcon = entry.thumbs.isEmpty(),
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -979,14 +971,14 @@ private fun libgriditem(
                     text = entry.name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = glass.ink,
+                    color = glassTokens.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = entry.subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = glass.inkSecondary,
+                    color = glassTokens.inkSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1003,7 +995,7 @@ private fun libgriditem(
                     .clickable { onNavigate(Route.Playlist(pl.id, local = pl.local)) }
                     .padding(6.dp),
             ) {
-                PlaylistThumb(
+                covergrid(
                     thumbnails = thumbs,
                     fallbackIcon = ZIcons.Playlist,
                     shape = RoundedCornerShape(16.dp),
@@ -1016,7 +1008,7 @@ private fun libgriditem(
                     text = pl.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = glass.ink,
+                    color = glassTokens.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.basicMarquee(),
@@ -1024,7 +1016,7 @@ private fun libgriditem(
                 Text(
                     text = pl.countText ?: pl.author ?: "Playlist",
                     style = MaterialTheme.typography.bodySmall,
-                    color = glass.inkSecondary,
+                    color = glassTokens.inkSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1040,7 +1032,7 @@ private fun libgriditem(
                     .clickable { onNavigate(Route.Album(al.id)) }
                     .padding(6.dp),
             ) {
-                ArtImage(
+                artimage(
                     url = al.artwork,
                     shape = RoundedCornerShape(16.dp),
                     fallbackIcon = ZIcons.Album,
@@ -1053,7 +1045,7 @@ private fun libgriditem(
                     text = al.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = glass.ink,
+                    color = glassTokens.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.basicMarquee(),
@@ -1061,7 +1053,7 @@ private fun libgriditem(
                 Text(
                     text = al.subtitle().ifBlank { "Album" },
                     style = MaterialTheme.typography.bodySmall,
-                    color = glass.inkSecondary,
+                    color = glassTokens.inkSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1078,7 +1070,7 @@ private fun libgriditem(
                     .clickable { onNavigate(Route.Artist(ar.id)) }
                     .padding(6.dp),
             ) {
-                ArtImage(
+                artimage(
                     url = ar.artwork,
                     shape = CircleShape,
                     fallbackIcon = ZIcons.Artist,
@@ -1091,7 +1083,7 @@ private fun libgriditem(
                     text = ar.name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = glass.ink,
+                    color = glassTokens.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
@@ -1099,7 +1091,7 @@ private fun libgriditem(
                 Text(
                     text = ar.subscribers ?: "Artist",
                     style = MaterialTheme.typography.bodySmall,
-                    color = glass.inkSecondary,
+                    color = glassTokens.inkSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
@@ -1116,8 +1108,9 @@ private fun libgriditem(
                     .clickable { onPlaySong(sg) }
                     .padding(6.dp),
             ) {
-                ArtImage(
-                    url = sg.artwork,
+                artimage(
+                    url = sg.trackart(),
+                    fallbackUrl = sg.fallbackart(),
                     shape = RoundedCornerShape(16.dp),
                     fallbackIcon = ZIcons.Note,
                     playing = playingId == sg.id,
@@ -1130,14 +1123,14 @@ private fun libgriditem(
                     text = sg.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = if (playingId == sg.id) glass.accent else glass.ink,
+                    color = if (playingId == sg.id) glassTokens.accent else glassTokens.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = sg.artistline(),
                     style = MaterialTheme.typography.bodySmall,
-                    color = glass.inkSecondary,
+                    color = glassTokens.inkSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1147,14 +1140,14 @@ private fun libgriditem(
 }
 
 @Composable
-private fun liblistitem(
+private fun listitem(
     entry: LibEntry,
     playingId: String?,
     onNavigate: (Route) -> Unit,
     onTrackMenu: (Track) -> Unit,
     onPlaySong: (Track) -> Unit,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     when (entry) {
         is LibEntry.AutoEntry -> {
             Row(
@@ -1164,10 +1157,10 @@ private fun liblistitem(
                     .clickable { onNavigate(Route.Playlist(entry.id, local = true)) }
                     .padding(horizontal = 18.dp, vertical = 8.dp),
             ) {
-                PlaylistThumb(
+                covergrid(
                     thumbnails = entry.thumbs,
                     fallbackIcon = entry.icon,
-                    preferIcon = true,
+                    preferIcon = entry.thumbs.isEmpty(),
                     shape = RoundedCornerShape(13.dp),
                     modifier = Modifier.size(56.dp),
                 )
@@ -1177,17 +1170,17 @@ private fun liblistitem(
                         text = entry.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = glass.ink,
+                        color = glassTokens.ink,
                         maxLines = 1,
                     )
                     Text(
                         text = entry.subtitle,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = glass.inkSecondary,
+                        color = glassTokens.inkSecondary,
                         maxLines = 1,
                     )
                 }
-                Icon(ZIcons.ChevronRight, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
+                Icon(ZIcons.ChevronRight, null, tint = glassTokens.inkMuted, modifier = Modifier.size(18.dp))
             }
         }
 
@@ -1201,7 +1194,7 @@ private fun liblistitem(
                     .clickable { onNavigate(Route.Playlist(pl.id, local = pl.local)) }
                     .padding(horizontal = 18.dp, vertical = 8.dp),
             ) {
-                PlaylistThumb(
+                covergrid(
                     thumbnails = thumbs,
                     fallbackIcon = ZIcons.Playlist,
                     shape = RoundedCornerShape(13.dp),
@@ -1213,19 +1206,19 @@ private fun liblistitem(
                         text = pl.title,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = glass.ink,
+                        color = glassTokens.ink,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = listOfNotNull(pl.author, pl.countText).joinToString(" - "),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = glass.inkSecondary,
+                        color = glassTokens.inkSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Icon(ZIcons.ChevronRight, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
+                Icon(ZIcons.ChevronRight, null, tint = glassTokens.inkMuted, modifier = Modifier.size(18.dp))
             }
         }
 
@@ -1238,7 +1231,7 @@ private fun liblistitem(
                     .clickable { onNavigate(Route.Album(al.id)) }
                     .padding(horizontal = 18.dp, vertical = 8.dp),
             ) {
-                ArtImage(
+                artimage(
                     url = al.artwork,
                     shape = RoundedCornerShape(13.dp),
                     fallbackIcon = ZIcons.Album,
@@ -1250,19 +1243,19 @@ private fun liblistitem(
                         text = al.title,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = glass.ink,
+                        color = glassTokens.ink,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = al.subtitle().ifBlank { "Album" },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = glass.inkSecondary,
+                        color = glassTokens.inkSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Icon(ZIcons.ChevronRight, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
+                Icon(ZIcons.ChevronRight, null, tint = glassTokens.inkMuted, modifier = Modifier.size(18.dp))
             }
         }
 
@@ -1275,7 +1268,7 @@ private fun liblistitem(
                     .clickable { onNavigate(Route.Artist(ar.id)) }
                     .padding(horizontal = 18.dp, vertical = 8.dp),
             ) {
-                ArtImage(
+                artimage(
                     url = ar.artwork,
                     shape = CircleShape,
                     fallbackIcon = ZIcons.Artist,
@@ -1287,23 +1280,23 @@ private fun liblistitem(
                         text = ar.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = glass.ink,
+                        color = glassTokens.ink,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = ar.subscribers ?: "Artist",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = glass.inkSecondary,
+                        color = glassTokens.inkSecondary,
                         maxLines = 1,
                     )
                 }
-                Icon(ZIcons.ChevronRight, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
+                Icon(ZIcons.ChevronRight, null, tint = glassTokens.inkMuted, modifier = Modifier.size(18.dp))
             }
         }
 
         is LibEntry.SongEntry -> {
-            SongRow(
+            songrow(
                 track = entry.track,
                 playing = playingId == entry.track.id,
                 onClick = { onPlaySong(entry.track) },
@@ -1319,7 +1312,7 @@ private fun libempty(
     icon: ImageVector,
     text: String,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -1329,14 +1322,14 @@ private fun libempty(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = glass.inkMuted,
+            tint = glassTokens.inkMuted,
             modifier = Modifier.size(44.dp),
         )
         Spacer(Modifier.height(12.dp))
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
-            color = glass.inkSecondary,
+            color = glassTokens.inkSecondary,
             textAlign = TextAlign.Center,
         )
     }

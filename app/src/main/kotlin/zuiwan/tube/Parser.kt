@@ -130,7 +130,9 @@ object TubeParser {
                     artists = artists,
                     album = albumRef,
                     duration = duration,
-                    artwork = thumb.ifBlank { fallbackAlbum?.artwork.orEmpty() },
+                    artwork = thumb
+                        .ifBlank { fallbackAlbum?.artwork.orEmpty() }
+                        .ifBlank { "https://i.ytimg.com/vi/$directVideoId/hqdefault.jpg" },
                     explicit = explicit,
                     video = isVideo,
                     setVideoId = setVideoId,
@@ -202,11 +204,13 @@ object TubeParser {
         return null
     }
 
-    fun parsetworrow(renderer: JsonObject): FeedItem? {
+    fun parsetile(renderer: JsonObject): FeedItem? {
         val title = renderer["title"].runtext().takeIf { it.isNotBlank() } ?: return null
         val subRuns = renderer["subtitle"].runs()
         val groups = subRuns.splitgroups()
-        val thumb = upscaleart(renderer["thumbnailRenderer"].lastthumb(), 544)
+        val rawThumb = renderer["thumbnailRenderer"].lastthumb()
+            .ifBlank { renderer["thumbnail"].lastthumb() }
+        val thumb = upscaleart(rawThumb, 544)
         val explicit = renderer["subtitleBadges"].arr().hasexplicit()
 
         val nav = renderer["navigationEndpoint"].obj()
@@ -232,7 +236,7 @@ object TubeParser {
                     title = title,
                     artists = subRuns.extractartists(),
                     duration = groups.lastOrNull()?.let { parsetime(it.joinToString("") { r -> r.text }) } ?: 0,
-                    artwork = thumb,
+                    artwork = thumb.ifBlank { "https://i.ytimg.com/vi/$videoId/hqdefault.jpg" },
                     explicit = explicit,
                     video = watchType != null && watchType != "MUSIC_VIDEO_TYPE_ATV",
                 ),
@@ -303,7 +307,7 @@ object TubeParser {
             val moreBrowse = header.pathobj("moreContentButton", "buttonRenderer", "navigationEndpoint", "browseEndpoint")
             val items = carousel["contents"].arr().orEmpty().mapNotNull { entry ->
                 val o = entry.obj() ?: return@mapNotNull null
-                o["musicTwoRowItemRenderer"].obj()?.let(::parsetworrow)
+                o["musicTwoRowItemRenderer"].obj()?.let(::parsetile)
                     ?: o["musicResponsiveListItemRenderer"].obj()?.let { parseresponsive(it) }
             }
             if (title.isNotBlank() && items.isNotEmpty()) {
@@ -336,7 +340,7 @@ object TubeParser {
         section["gridRenderer"].obj()?.let { grid ->
             val title = grid.path("header", "gridHeaderRenderer", "title").runtext().ifBlank { "Featured" }
             val items = grid["items"].arr().orEmpty().mapNotNull { entry ->
-                entry.obj()?.get("musicTwoRowItemRenderer").obj()?.let(::parsetworrow)
+                entry.obj()?.get("musicTwoRowItemRenderer").obj()?.let(::parsetile)
             }
             if (items.isNotEmpty()) {
                 return FeedShelf(title = title, items = items)
@@ -500,9 +504,13 @@ object TubeParser {
             "contents",
         )?.drop(1)?.flatMap { sec ->
             sec.obj().patharr("musicCarouselShelfRenderer", "contents").orEmpty().mapNotNull { item ->
-                (item.obj()?.get("musicTwoRowItemRenderer").obj()?.let(::parsetworrow) as? FeedItem.AlbumCard)?.album
+                (item.obj()?.get("musicTwoRowItemRenderer").obj()?.let(::parsetile) as? FeedItem.AlbumCard)?.album
             }
         }.orEmpty()
+
+        val finalAlbumThumb = thumb.ifBlank {
+            upscaleart(root.path("microformat", "microformatDataRenderer", "thumbnail").lastthumb(), 1080)
+        }
 
         return AlbumSummary(
             id = browseId,
@@ -510,11 +518,11 @@ object TubeParser {
             title = title.ifBlank { "Album" },
             artists = artists,
             year = year,
-            artwork = thumb,
+            artwork = finalAlbumThumb,
         ) to versions
     }
 
-    fun parsealbumtracks(root: JsonObject, album: AlbumSummary): Pair<List<Track>, String?> {
+    fun albumtracks(root: JsonObject, album: AlbumSummary): Pair<List<Track>, String?> {
         val twoColShelf = root.patharr(
             "contents",
             "twoColumnBrowseResultsRenderer",
@@ -555,15 +563,22 @@ object TubeParser {
         val immersive = root.pathobj("header", "musicImmersiveHeaderRenderer")
         val visual = root.pathobj("header", "musicVisualHeaderRenderer")
         val basic = root.pathobj("header", "musicHeaderRenderer")
+        val tabbed = root.pathobj("header", "c4TabbedHeaderRenderer")
 
         val name = immersive?.get("title")?.runtext()?.takeIf { it.isNotBlank() }
             ?: visual?.get("title")?.runtext()?.takeIf { it.isNotBlank() }
+            ?: tabbed?.get("title")?.runtext()?.takeIf { it.isNotBlank() }
             ?: basic?.get("title")?.runtext()
             ?: "Artist"
-        val thumb = upscaleart(
-            (immersive?.get("thumbnail") ?: visual?.get("foregroundThumbnail") ?: basic?.get("thumbnail")).lastthumb(),
-            1080,
-        )
+        val rawArtistThumb = listOfNotNull(
+            immersive?.get("thumbnail")?.lastthumb(),
+            visual?.get("foregroundThumbnail")?.lastthumb(),
+            visual?.get("thumbnail")?.lastthumb(),
+            tabbed?.get("avatar")?.lastthumb(),
+            basic?.get("thumbnail")?.lastthumb(),
+            root.path("microformat", "microformatDataRenderer", "thumbnail").lastthumb(),
+        ).firstOrNull { it.isNotBlank() }.orEmpty()
+        val thumb = upscaleart(rawArtistThumb, 1080)
         val subButton = immersive.pathobj("subscriptionButton", "subscribeButtonRenderer")
             ?: visual.pathobj("subscriptionButton", "subscribeButtonRenderer")
         val subscribers = immersive.path("subscriptionButton2", "subscribeButtonRenderer", "subscriberCountWithSubscribeText")
@@ -634,7 +649,9 @@ object TubeParser {
             .runtext()
             .ifBlank { header?.get("description").runtext() }
             .takeIf { it.isNotBlank() }
-        val thumb = upscaleart(header?.get("thumbnail").lastthumb(), 1080)
+        val rawPlThumb = header?.get("thumbnail").lastthumb()
+            .ifBlank { root.path("microformat", "microformatDataRenderer", "thumbnail").lastthumb() }
+        val thumb = upscaleart(rawPlThumb, 1080)
 
         val secondaryShelf = root.patharr(
             "contents",
@@ -678,7 +695,7 @@ object TubeParser {
         )
     }
 
-    fun parseplaylistmore(root: JsonObject): Pair<List<Track>, String?> {
+    fun moretracks(root: JsonObject): Pair<List<Track>, String?> {
         val raw = root["onResponseReceivedActions"].arr()
             ?.firstOrNull().obj()
             .patharr("appendContinuationItemsAction", "continuationItems")
@@ -805,7 +822,7 @@ object TubeParser {
                     },
                     album = albumRun?.let { AlbumRef(it.browseId, it.text) },
                     duration = duration,
-                    artwork = thumb,
+                    artwork = thumb.ifBlank { "https://i.ytimg.com/vi/$id/hqdefault.jpg" },
                     explicit = explicit,
                     setVideoId = video["playlistSetVideoId"].str(),
                     libraryAddToken = addToken,
@@ -832,7 +849,7 @@ object TubeParser {
         )
     }
 
-    fun parselyricsbrowse(root: JsonObject): String? {
+    fun parselyrics(root: JsonObject): String? {
         val sections = root.patharr("contents", "sectionListRenderer", "contents")
             ?: root.patharr("contents", "singleColumnBrowseResultsRenderer", "tabs")
                 ?.firstOrNull().obj()

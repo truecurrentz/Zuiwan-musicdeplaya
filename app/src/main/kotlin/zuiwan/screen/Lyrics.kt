@@ -49,9 +49,9 @@ import zuiwan.model.LyricPayload
 import zuiwan.model.artistline
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.GlassBox
-import zuiwan.ui.GlassChip
-import zuiwan.ui.GlassIconButton
+import zuiwan.ui.glass
+import zuiwan.ui.chip
+import zuiwan.ui.iconbtn
 import zuiwan.ui.ZIcons
 
 @Composable
@@ -62,7 +62,7 @@ fun viewlyrics(
     onDismissExternalFinder: () -> Unit = {},
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val scope = rememberCoroutineScope()
 
     val state by hub.pilot.state.collectAsState()
@@ -107,9 +107,9 @@ fun viewlyrics(
     if (finderVisible) {
         AlertDialog(
             onDismissRequest = ::closefinder,
-            containerColor = glass.glassStrong,
-            titleContentColor = glass.ink,
-            textContentColor = glass.ink,
+            containerColor = glassTokens.glassStrong,
+            titleContentColor = glassTokens.ink,
+            textContentColor = glassTokens.ink,
             title = { Text("Search Lyrics") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -123,7 +123,7 @@ fun viewlyrics(
                             singleLine = true,
                             modifier = Modifier.weight(1f),
                         )
-                        GlassIconButton(
+                        iconbtn(
                             icon = ZIcons.Search,
                             onClick = {
                                 scope.launch {
@@ -133,10 +133,10 @@ fun viewlyrics(
                         )
                     }
                     candidates.take(5).forEach { cand ->
-                        GlassBox(
+                        glass(
                             shape = RoundedCornerShape(12.dp),
                             onClick = {
-                                val track = state.current ?: return@GlassBox
+                                val track = state.current ?: return@glass
                                 scope.launch {
                                     hub.lyrics.applylyrics(track.id, cand)
                                     hub.pilot.refreshlyrics(track, force = false)
@@ -147,11 +147,11 @@ fun viewlyrics(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Column {
-                                Text(cand.source, style = MaterialTheme.typography.titleSmall, color = glass.accent)
+                                Text(cand.source, style = MaterialTheme.typography.titleSmall, color = glassTokens.accent)
                                 Text(
                                     cand.lines.take(2).joinToString(" / ") { it.text },
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = glass.inkSecondary,
+                                    color = glassTokens.inkSecondary,
                                     maxLines = 2,
                                 )
                             }
@@ -161,7 +161,7 @@ fun viewlyrics(
             },
             confirmButton = {
                 TextButton(onClick = ::closefinder) {
-                    Text("Close", color = glass.accent)
+                    Text("Close", color = glassTokens.accent)
                 }
             },
         )
@@ -175,25 +175,25 @@ fun viewlyrics(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassChip(
+                    chip(
                         label = "Synced",
                         selected = !plainMode,
                         onClick = { plainMode = false },
                     )
-                    GlassChip(
+                    chip(
                         label = "Plain",
                         selected = plainMode,
                         onClick = { plainMode = true },
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    GlassIconButton(
+                    iconbtn(
                         icon = ZIcons.Search,
                         size = 34.dp,
                         iconSize = 16.dp,
                         onClick = { internalFinder = true },
                     )
-                    GlassIconButton(
+                    iconbtn(
                         icon = ZIcons.Refresh,
                         size = 34.dp,
                         iconSize = 16.dp,
@@ -209,7 +209,7 @@ fun viewlyrics(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier.fillMaxSize(),
             ) {
-                CircularProgressIndicator(color = glass.accent)
+                CircularProgressIndicator(color = glassTokens.accent)
             }
         } else if (payload.lines.isEmpty()) {
             Box(
@@ -220,20 +220,20 @@ fun viewlyrics(
                     Icon(
                         imageVector = ZIcons.Lyrics,
                         contentDescription = null,
-                        tint = glass.inkMuted,
+                        tint = glassTokens.inkMuted,
                         modifier = Modifier.size(38.dp),
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
                         text = "No lyrics found",
                         style = MaterialTheme.typography.titleLarge,
-                        color = glass.inkSecondary,
+                        color = glassTokens.inkSecondary,
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
                         text = "Tap the search button above to choose a lyric match",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = glass.inkMuted,
+                        color = glassTokens.inkMuted,
                     )
                 }
             }
@@ -245,7 +245,7 @@ fun viewlyrics(
                 modifier = Modifier.weight(1f),
             ) {
                 itemsIndexed(payload.lines) { idx, line ->
-                    LyricLineView(
+                    lyricline(
                         line = line,
                         active = !plainMode && idx == activeIdx,
                         plainMode = plainMode || !payload.synced,
@@ -267,9 +267,9 @@ fun viewlyrics(
                         Text(
                             text = "Source: ${payload.source}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = glass.inkMuted,
+                            color = glassTokens.inkMuted,
                         )
-                        GlassChip(
+                        chip(
                             label = if (plainMode) "Synced" else "Plain",
                             selected = false,
                             onClick = { plainMode = !plainMode },
@@ -282,7 +282,7 @@ fun viewlyrics(
 }
 
 @Composable
-private fun LyricLineView(
+private fun lyricline(
     line: LyricLine,
     active: Boolean,
     plainMode: Boolean,
@@ -290,12 +290,12 @@ private fun LyricLineView(
     showRomanized: Boolean,
     onSeek: () -> Unit,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val baseColor by animateColorAsState(
         targetValue = when {
-            plainMode -> glass.ink
-            active -> glass.ink
-            else -> glass.inkMuted.copy(alpha = 0.42f)
+            plainMode -> glassTokens.ink
+            active -> glassTokens.ink
+            else -> glassTokens.inkMuted.copy(alpha = 0.42f)
         },
         animationSpec = tween(220),
         label = "lyricColor",
@@ -317,7 +317,7 @@ private fun LyricLineView(
                 Icon(
                     imageVector = ZIcons.Note,
                     contentDescription = null,
-                    tint = if (active) glass.ink else glass.inkMuted.copy(alpha = 0.45f),
+                    tint = if (active) glassTokens.ink else glassTokens.inkMuted.copy(alpha = 0.45f),
                     modifier = Modifier.size(22.dp),
                 )
             }
@@ -327,7 +327,7 @@ private fun LyricLineView(
                     val sung = positionMs >= w.startMs
                     withStyle(
                         SpanStyle(
-                            color = if (sung) glass.ink else glass.ink.copy(alpha = 0.46f),
+                            color = if (sung) glassTokens.ink else glassTokens.ink.copy(alpha = 0.46f),
                             fontWeight = FontWeight.Bold,
                         ),
                     ) {
@@ -356,7 +356,7 @@ private fun LyricLineView(
                 fontSize = 15.sp,
                 lineHeight = 20.sp,
                 fontWeight = FontWeight.Medium,
-                color = if (active || plainMode) glass.ink.copy(alpha = 0.85f) else glass.inkMuted.copy(alpha = 0.36f),
+                color = if (active || plainMode) glassTokens.ink.copy(alpha = 0.85f) else glassTokens.inkMuted.copy(alpha = 0.36f),
                 modifier = Modifier.padding(top = 3.dp),
             )
         }
@@ -365,7 +365,7 @@ private fun LyricLineView(
             Text(
                 text = line.translated,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (active || plainMode) glass.inkSecondary else glass.inkMuted.copy(alpha = 0.36f),
+                color = if (active || plainMode) glassTokens.inkSecondary else glassTokens.inkMuted.copy(alpha = 0.36f),
                 modifier = Modifier.padding(top = 2.dp),
             )
         }

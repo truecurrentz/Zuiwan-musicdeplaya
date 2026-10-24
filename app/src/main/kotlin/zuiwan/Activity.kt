@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import zuiwan.model.Track
+import zuiwan.model.trackart
 import zuiwan.screen.viewalbum
 import zuiwan.screen.viewartist
 import zuiwan.screen.viewbrowse
@@ -52,16 +53,16 @@ import zuiwan.screen.viewplaylist
 import zuiwan.screen.viewsearch
 import zuiwan.screen.viewsettings
 import zuiwan.screen.viewstats
-import zuiwan.sheet.PlaylistPickerSheet
-import zuiwan.sheet.TrackInfoSheet
-import zuiwan.sheet.TrackMenuSheet
+import zuiwan.sheet.pickersheet
+import zuiwan.sheet.infosheet
+import zuiwan.sheet.menusheet
 import zuiwan.state.Hub
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalHaze
-import zuiwan.theme.ZuiwanTheme
-import zuiwan.ui.AmbientBackdrop
-import zuiwan.ui.FloatingGlassDock
-import zuiwan.ui.GlassMiniplayer
+import zuiwan.theme.apptheme
+import zuiwan.ui.backdrop
+import zuiwan.ui.floatingbar
+import zuiwan.ui.miniplayer
 import zuiwan.ui.NavStack
 import zuiwan.ui.Route
 
@@ -79,7 +80,7 @@ class Activity : ComponentActivity() {
 
         setContent {
             CompositionLocalProvider(LocalHub provides hub) {
-                ZuiwanRoot(
+                rootview(
                     hub = hub,
                     deepLink = incomingUrl,
                     onDeepLinkConsumed = { incomingUrl = null },
@@ -95,7 +96,7 @@ class Activity : ComponentActivity() {
 }
 
 @Composable
-private fun ZuiwanRoot(
+private fun rootview(
     hub: Hub,
     deepLink: String?,
     onDeepLinkConsumed: () -> Unit,
@@ -121,8 +122,9 @@ private fun ZuiwanRoot(
                 val vid = url.substringAfter("watch?v=").substringBefore("&")
                 if (vid.isNotBlank()) {
                     val next = hub.tube.loadnext(videoId = vid).getOrNull()
-                    if (next != null && next.tracks.isNotEmpty()) {
-                        hub.pilot.playtracks(next.tracks, 0, next.title ?: "Shared")
+                    val first = next?.tracks?.firstOrNull()
+                    if (first != null) {
+                        hub.pilot.audioplay(first, next.title ?: first.title)
                         playerExpanded = true
                     }
                 }
@@ -131,8 +133,9 @@ private fun ZuiwanRoot(
                 val vid = url.substringAfter("youtu.be/").substringBefore("?")
                 if (vid.isNotBlank()) {
                     val next = hub.tube.loadnext(videoId = vid).getOrNull()
-                    if (next != null && next.tracks.isNotEmpty()) {
-                        hub.pilot.playtracks(next.tracks, 0, next.title ?: "Shared")
+                    val first = next?.tracks?.firstOrNull()
+                    if (first != null) {
+                        hub.pilot.audioplay(first, next.title ?: first.title)
                         playerExpanded = true
                     }
                 }
@@ -152,11 +155,11 @@ private fun ZuiwanRoot(
         nav.pop()
     }
 
-    ZuiwanTheme(
+    apptheme(
         choice = settings.theme,
         dynamicColors = settings.dynamicColors,
         blurEnabled = settings.blurEnabled,
-        artworkUrl = playback.current?.artwork,
+        artworkUrl = playback.current?.trackart(),
     ) {
         CompositionLocalProvider(LocalHaze provides rootHaze) {
             val hasMini = playback.current != null
@@ -168,7 +171,7 @@ private fun ZuiwanRoot(
                         .fillMaxSize()
                         .hazeSource(rootHaze),
                 ) {
-                    AmbientBackdrop(artworkUrl = playback.current?.artwork, intense = false)
+                    backdrop(artworkUrl = playback.current?.trackart(), intense = false)
 
                     val activeRoute = nav.current
                     AnimatedContent(
@@ -265,7 +268,7 @@ private fun ZuiwanRoot(
                     ) {
                         if (hasMini) {
                             val currentTrack = playback.current!!
-                            GlassMiniplayer(
+                            miniplayer(
                                 state = playback,
                                 liked = currentTrack.id in likedIds,
                                 onExpand = { playerExpanded = true },
@@ -277,7 +280,7 @@ private fun ZuiwanRoot(
                             )
                             Spacer(Modifier.height(3.dp))
                         }
-                        FloatingGlassDock(
+                        floatingbar(
                             activeTab = nav.activeTab,
                             onSelect = { tab -> nav.switchtab(tab) },
                             connectedAbove = hasMini,
@@ -298,7 +301,7 @@ private fun ZuiwanRoot(
                 }
 
                 menuTrack?.let { target ->
-                    TrackMenuSheet(
+                    menusheet(
                         track = target,
                         onDismiss = { menuTrack = null },
                         onNavigate = { route ->
@@ -311,14 +314,14 @@ private fun ZuiwanRoot(
                 }
 
                 playlistTrack?.let { target ->
-                    PlaylistPickerSheet(
+                    pickersheet(
                         track = target,
                         onDismiss = { playlistTrack = null },
                     )
                 }
 
                 infoTrack?.let { target ->
-                    TrackInfoSheet(
+                    infosheet(
                         track = target,
                         onDismiss = { infoTrack = null },
                     )

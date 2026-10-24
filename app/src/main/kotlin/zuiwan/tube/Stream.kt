@@ -155,7 +155,7 @@ class StreamEngine(
                 innerTube = tube,
                 remotePlayerConfigStore = store,
                 cipherService = cipher,
-            ).withembeddedfallback()
+            ).withfallback()
 
             InnerTubeExtractor(
                 configParser = parser,
@@ -170,13 +170,13 @@ class StreamEngine(
         }
     }
 
-    private fun YtConfigParser.withembeddedfallback(): YtConfigParser =
+    private fun YtConfigParser.withfallback(): YtConfigParser =
         object : YtConfigParser by this {
             override suspend fun fetchConfig(videoId: String, useLoginCookies: Boolean) =
                 try {
-                    this@withembeddedfallback.fetchConfig(videoId, useLoginCookies)
+                    this@withfallback.fetchConfig(videoId, useLoginCookies)
                 } catch (_: IllegalStateException) {
-                    this@withembeddedfallback.fetchEmbeddedConfig(videoId, false)
+                    this@withfallback.fetchEmbeddedConfig(videoId, false)
                 }
         }
 

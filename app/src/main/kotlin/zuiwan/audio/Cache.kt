@@ -226,7 +226,7 @@ class AudioVault(
         }
     }
 
-    fun clearstreamcache() {
+    fun clearcache() {
         scope.launch {
             val keys = streamCache.keys.toList()
             keys.forEach { runCatching { streamCache.removeResource(it) } }

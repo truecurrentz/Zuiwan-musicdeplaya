@@ -29,19 +29,20 @@ import kotlinx.coroutines.launch
 import zuiwan.model.ArtistDetail
 import zuiwan.model.FeedItem
 import zuiwan.model.Track
+import zuiwan.model.trackart
 import zuiwan.model.upscaleart
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.DetailHero
-import zuiwan.ui.GlassIconButton
-import zuiwan.ui.GlassTopBar
-import zuiwan.ui.MediaCard
+import zuiwan.ui.hero
+import zuiwan.ui.iconbtn
+import zuiwan.ui.topbar
+import zuiwan.ui.mediacard
 import zuiwan.ui.Route
-import zuiwan.ui.ScrollHeaderHost
-import zuiwan.ui.SectionHeader
-import zuiwan.ui.SongRow
+import zuiwan.ui.scrollhost
+import zuiwan.ui.sectionbar
+import zuiwan.ui.songrow
 import zuiwan.ui.ZIcons
-import zuiwan.ui.rememberheaderscroll
+import zuiwan.ui.headerscroll
 
 @Composable
 fun viewartist(
@@ -52,7 +53,7 @@ fun viewartist(
     bottomPadding: PaddingValues,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val scope = rememberCoroutineScope()
     val savedArtists by hub.savedArtists.collectAsState()
     val playback by hub.pilot.state.collectAsState()
@@ -60,7 +61,7 @@ fun viewartist(
     var detail by remember(artistId) { mutableStateOf<ArtistDetail?>(null) }
     var loading by remember(artistId) { mutableStateOf(true) }
 
-    val headerScroll = rememberheaderscroll()
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
 
     val lifted by remember {
@@ -82,18 +83,18 @@ fun viewartist(
 
     val isSaved = savedArtists.any { it.id == artistId }
 
-    ScrollHeaderHost(
+    scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         overlayHero = true,
         header = {
-            GlassTopBar(
+            topbar(
                 title = detail?.artist?.name ?: "Artist",
                 showTitle = pastHero || detail == null,
                 onBack = onBack,
                 actions = {
                     detail?.let { info ->
-                        GlassIconButton(
+                        iconbtn(
                             icon = ZIcons.Radio,
                             onClick = {
                                 val radioId = info.radioPlaylistId ?: info.shufflePlaylistId
@@ -125,7 +126,7 @@ fun viewartist(
                             .fillMaxWidth()
                             .padding(top = 140.dp, bottom = 80.dp),
                     ) {
-                        CircularProgressIndicator(color = glass.accent)
+                        CircularProgressIndicator(color = glassTokens.accent)
                     }
                 }
             }
@@ -137,23 +138,25 @@ fun viewartist(
                 val meta = listOfNotNull(info.listeners, info.artist.subscribers).joinToString(" - ")
 
                 item(key = "hero") {
-                    DetailHero(
+                    hero(
                         title = info.artist.name,
-                        artworkUrl = upscaleart(info.artist.artwork, 1080),
+                        artworkUrl = upscaleart(info.artist.artwork, 1080).ifBlank {
+                            topSongs.firstOrNull()?.trackart(1080).orEmpty()
+                        },
                         fallbackIcon = ZIcons.Artist,
                         circularArt = true,
                         metadata = meta.ifBlank { null },
                         description = info.description?.takeIf { it.isNotBlank() },
                         primaryActions = {
-                            GlassIconButton(
+                            iconbtn(
                                 icon = if (isSaved) ZIcons.HeartFilled else ZIcons.Heart,
                                 active = isSaved,
                                 softFill = true,
                                 size = 48.dp,
                                 iconSize = 21.dp,
-                                onClick = { hub.togglesaveartist(info.artist) },
+                                onClick = { hub.saveartist(info.artist) },
                             )
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.Play,
                                 solidAccent = true,
                                 size = 64.dp,
@@ -171,7 +174,7 @@ fun viewartist(
                                     }
                                 },
                             )
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.Shuffle,
                                 softFill = true,
                                 size = 48.dp,
@@ -196,7 +199,7 @@ fun viewartist(
                 info.sections.forEachIndexed { idx, section ->
                     item(key = "sec_head_$idx") {
                         Spacer(Modifier.height(10.dp))
-                        SectionHeader(
+                        sectionbar(
                             title = section.title,
                             actionLabel = if (section.browseId != null) "See all" else null,
                             onAction = section.browseId?.let { bid ->
@@ -209,7 +212,7 @@ fun viewartist(
                     if (allSongs) {
                         val songs = section.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
                         items(songs.take(6), key = { "${idx}_${it.id}" }) { song ->
-                            SongRow(
+                            songrow(
                                 track = song,
                                 playing = playback.current?.id == song.id,
                                 onClick = {
@@ -227,7 +230,7 @@ fun viewartist(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 items(section.items, key = { it.key }) { item ->
-                                    MediaCard(
+                                    mediacard(
                                         item = item,
                                         onClick = {
                                             when (item) {

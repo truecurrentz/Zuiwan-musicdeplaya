@@ -18,8 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import zuiwan.model.SessionData
 import zuiwan.state.LocalHub
-import zuiwan.ui.GlassIconButton
-import zuiwan.ui.GlassTopBar
+import zuiwan.ui.iconbtn
+import zuiwan.ui.topbar
 import zuiwan.ui.ZIcons
 
 private class SessionCapture(
@@ -52,9 +52,6 @@ fun viewlogin(
                     cookie = cookie,
                     visitorData = visitorData,
                     dataSyncId = dataSyncId,
-                    lastFmUser = hub.session.value.lastFmUser,
-                    lastFmSession = hub.session.value.lastFmSession,
-                    scrobbleEnabled = hub.session.value.scrobbleEnabled,
                 ),
             )
         }
@@ -68,8 +65,8 @@ fun viewlogin(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        GlassTopBar(title = "Sign In", onBack = ::finishlogin) {
-            GlassIconButton(
+        topbar(title = "Sign In", onBack = ::finishlogin) {
+            iconbtn(
                 icon = ZIcons.Check,
                 solidAccent = true,
                 onClick = ::finishlogin,

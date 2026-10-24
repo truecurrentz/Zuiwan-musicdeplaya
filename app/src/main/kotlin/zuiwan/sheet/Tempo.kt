@@ -30,15 +30,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.GlassBox
-import zuiwan.ui.GlassChip
+import zuiwan.ui.chip
+import zuiwan.ui.glass
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun TempoSheet(onDismiss: () -> Unit) {
+fun temposheet(onDismiss: () -> Unit) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val state by hub.pilot.state.collectAsState()
     var speed by remember(state.speed) { mutableFloatStateOf(state.speed) }
     var pitch by remember(state.pitch) { mutableFloatStateOf(state.pitch) }
@@ -46,8 +46,8 @@ fun TempoSheet(onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = glass.glassStrong,
-        contentColor = glass.ink,
+        containerColor = glassTokens.glassStrong,
+        contentColor = glassTokens.ink,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
     ) {
         Column(
@@ -60,7 +60,7 @@ fun TempoSheet(onDismiss: () -> Unit) {
             Text(
                 text = "Tempo & Pitch",
                 style = MaterialTheme.typography.headlineSmall,
-                color = glass.ink,
+                color = glassTokens.ink,
             )
             Spacer(Modifier.height(14.dp))
 
@@ -77,7 +77,7 @@ fun TempoSheet(onDismiss: () -> Unit) {
                 ).forEach { (label, s, p) ->
                     val selected = (speed * 100).roundToInt() == (s * 100).roundToInt() &&
                         (pitch * 100).roundToInt() == (p * 100).roundToInt()
-                    GlassChip(
+                    chip(
                         label = label,
                         selected = selected,
                         onClick = {
@@ -91,8 +91,9 @@ fun TempoSheet(onDismiss: () -> Unit) {
 
             Spacer(Modifier.height(16.dp))
 
-            GlassBox(
+            glass(
                 shape = RoundedCornerShape(18.dp),
+                elevated = true,
                 contentPadding = PaddingValues(16.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -102,8 +103,8 @@ fun TempoSheet(onDismiss: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Speed", style = MaterialTheme.typography.titleMedium, color = glass.ink)
-                        Text("%.2fx".format(speed), style = MaterialTheme.typography.labelLarge, color = glass.accent)
+                        Text("Speed", style = MaterialTheme.typography.titleMedium, color = glassTokens.ink)
+                        Text("%.2fx".format(speed), style = MaterialTheme.typography.labelLarge, color = glassTokens.accent)
                     }
                     Slider(
                         value = speed,
@@ -113,9 +114,9 @@ fun TempoSheet(onDismiss: () -> Unit) {
                         },
                         valueRange = 0.5f..2.0f,
                         colors = SliderDefaults.colors(
-                            thumbColor = glass.accent,
-                            activeTrackColor = glass.accent,
-                            inactiveTrackColor = glass.glassBorder,
+                            thumbColor = glassTokens.accent,
+                            activeTrackColor = glassTokens.accent,
+                            inactiveTrackColor = glassTokens.glassBorder,
                         ),
                     )
                     Spacer(Modifier.height(8.dp))
@@ -124,8 +125,8 @@ fun TempoSheet(onDismiss: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Pitch", style = MaterialTheme.typography.titleMedium, color = glass.ink)
-                        Text("%.2fx".format(pitch), style = MaterialTheme.typography.labelLarge, color = glass.accent)
+                        Text("Pitch", style = MaterialTheme.typography.titleMedium, color = glassTokens.ink)
+                        Text("%.2fx".format(pitch), style = MaterialTheme.typography.labelLarge, color = glassTokens.accent)
                     }
                     Slider(
                         value = pitch,
@@ -135,9 +136,9 @@ fun TempoSheet(onDismiss: () -> Unit) {
                         },
                         valueRange = 0.5f..2.0f,
                         colors = SliderDefaults.colors(
-                            thumbColor = glass.accent,
-                            activeTrackColor = glass.accent,
-                            inactiveTrackColor = glass.glassBorder,
+                            thumbColor = glassTokens.accent,
+                            activeTrackColor = glassTokens.accent,
+                            inactiveTrackColor = glassTokens.glassBorder,
                         ),
                     )
                 }

@@ -31,24 +31,24 @@ import androidx.compose.ui.unit.dp
 import zuiwan.model.formatclock
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.GlassBox
-import zuiwan.ui.GlassChip
-import zuiwan.ui.GlassPillButton
 import zuiwan.ui.ZIcons
+import zuiwan.ui.chip
+import zuiwan.ui.glass
+import zuiwan.ui.pillbtn
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SleepSheet(onDismiss: () -> Unit) {
+fun sleepsheet(onDismiss: () -> Unit) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val sleepState by hub.pilot.sleep.state.collectAsState()
     var customMin by remember { mutableFloatStateOf(25f) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = glass.glassStrong,
-        contentColor = glass.ink,
+        containerColor = glassTokens.glassStrong,
+        contentColor = glassTokens.ink,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
     ) {
         Column(
@@ -61,7 +61,7 @@ fun SleepSheet(onDismiss: () -> Unit) {
             Text(
                 text = "Sleep Timer",
                 style = MaterialTheme.typography.headlineSmall,
-                color = glass.ink,
+                color = glassTokens.ink,
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -75,7 +75,7 @@ fun SleepSheet(onDismiss: () -> Unit) {
                     "Gently pause playback automatically"
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (sleepState.active) glass.accent else glass.inkSecondary,
+                color = if (sleepState.active) glassTokens.accent else glassTokens.inkSecondary,
             )
 
             Spacer(Modifier.height(18.dp))
@@ -85,7 +85,7 @@ fun SleepSheet(onDismiss: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 listOf(5, 15, 30, 45, 60, 90).forEach { mins ->
-                    GlassChip(
+                    chip(
                         label = "${mins}m",
                         selected = false,
                         onClick = {
@@ -94,7 +94,7 @@ fun SleepSheet(onDismiss: () -> Unit) {
                         },
                     )
                 }
-                GlassChip(
+                chip(
                     label = "End of track",
                     selected = sleepState.active && sleepState.finishTrack,
                     onClick = {
@@ -106,8 +106,9 @@ fun SleepSheet(onDismiss: () -> Unit) {
 
             Spacer(Modifier.height(18.dp))
 
-            GlassBox(
+            glass(
                 shape = RoundedCornerShape(18.dp),
+                elevated = true,
                 contentPadding = PaddingValues(16.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -117,17 +118,17 @@ fun SleepSheet(onDismiss: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Custom duration", style = MaterialTheme.typography.titleMedium, color = glass.ink)
-                        Text("${customMin.toInt()} min", style = MaterialTheme.typography.labelLarge, color = glass.accent)
+                        Text("Custom duration", style = MaterialTheme.typography.titleMedium, color = glassTokens.ink)
+                        Text("${customMin.toInt()} min", style = MaterialTheme.typography.labelLarge, color = glassTokens.accent)
                     }
                     Slider(
                         value = customMin,
                         onValueChange = { customMin = it },
                         valueRange = 5f..180f,
                         colors = SliderDefaults.colors(
-                            thumbColor = glass.accent,
-                            activeTrackColor = glass.accent,
-                            inactiveTrackColor = glass.glassBorder,
+                            thumbColor = glassTokens.accent,
+                            activeTrackColor = glassTokens.accent,
+                            inactiveTrackColor = glassTokens.glassBorder,
                         ),
                     )
                 }
@@ -140,7 +141,7 @@ fun SleepSheet(onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (sleepState.active) {
-                    GlassPillButton(
+                    pillbtn(
                         text = "Cancel",
                         icon = ZIcons.Close,
                         onClick = {
@@ -150,7 +151,7 @@ fun SleepSheet(onDismiss: () -> Unit) {
                         modifier = Modifier.weight(1f),
                     )
                 }
-                GlassPillButton(
+                pillbtn(
                     text = "Start ${customMin.toInt()}m",
                     icon = ZIcons.Timer,
                     primary = true,

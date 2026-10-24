@@ -58,20 +58,20 @@ import zuiwan.model.SearchTab
 import zuiwan.model.Track
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.AlbumGridCard
-import zuiwan.ui.ArtImage
-import zuiwan.ui.BrandBar
-import zuiwan.ui.GlassBox
-import zuiwan.ui.GlassChip
-import zuiwan.ui.GlassIconButton
-import zuiwan.ui.MediaCard
-import zuiwan.ui.QuickPickTile
+import zuiwan.ui.albumcard
+import zuiwan.ui.artimage
+import zuiwan.ui.brandbar
+import zuiwan.ui.glass
+import zuiwan.ui.chip
+import zuiwan.ui.iconbtn
+import zuiwan.ui.mediacard
+import zuiwan.ui.picktile
 import zuiwan.ui.Route
-import zuiwan.ui.ScrollHeaderHost
-import zuiwan.ui.SectionHeader
-import zuiwan.ui.SongRow
+import zuiwan.ui.scrollhost
+import zuiwan.ui.sectionbar
+import zuiwan.ui.songrow
 import zuiwan.ui.ZIcons
-import zuiwan.ui.rememberheaderscroll
+import zuiwan.ui.headerscroll
 
 private enum class DiscoverPane(val label: String, val icon: ImageVector) {
     EXPLORE("Explore", ZIcons.Explore),
@@ -85,7 +85,7 @@ fun viewsearch(
     bottomPadding: PaddingValues,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
 
@@ -117,7 +117,7 @@ fun viewsearch(
             .take(12)
     }
 
-    val headerScroll = rememberheaderscroll()
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
 
     val lifted by remember {
@@ -178,20 +178,20 @@ fun viewsearch(
         }
     }
 
-    ScrollHeaderHost(
+    scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         header = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                BrandBar {
-                    GlassIconButton(
+                brandbar {
+                    iconbtn(
                         icon = ZIcons.Settings,
                         onClick = { onNavigate(Route.Settings) },
                     )
                 }
 
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    GlassBox(
+                    glass(
                         shape = RoundedCornerShape(999.dp),
                         elevated = true,
                         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 13.dp),
@@ -204,7 +204,7 @@ fun viewsearch(
                             Icon(
                                 imageVector = ZIcons.Search,
                                 contentDescription = null,
-                                tint = glass.inkSecondary,
+                                tint = glassTokens.inkSecondary,
                                 modifier = Modifier.size(20.dp),
                             )
                             Spacer(Modifier.width(12.dp))
@@ -213,7 +213,7 @@ fun viewsearch(
                                     Text(
                                         text = "Search YouTube Music",
                                         style = MaterialTheme.typography.bodyLarge,
-                                        color = glass.inkSecondary,
+                                        color = glassTokens.inkSecondary,
                                     )
                                 }
                                 BasicTextField(
@@ -223,15 +223,15 @@ fun viewsearch(
                                         if (it.isBlank()) submitted = ""
                                     },
                                     singleLine = true,
-                                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = glass.ink),
-                                    cursorBrush = SolidColor(glass.accent),
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = glassTokens.ink),
+                                    cursorBrush = SolidColor(glassTokens.accent),
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                                     keyboardActions = KeyboardActions(onSearch = { runsearch(query) }),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
                             if (query.isNotEmpty()) {
-                                GlassIconButton(
+                                iconbtn(
                                     icon = ZIcons.Close,
                                     onClick = {
                                         query = ""
@@ -242,7 +242,7 @@ fun viewsearch(
                                     iconSize = 15.dp,
                                 )
                             } else {
-                                GlassIconButton(
+                                iconbtn(
                                     icon = ZIcons.Globe,
                                     onClick = { pane = DiscoverPane.EXPLORE },
                                     size = 30.dp,
@@ -262,7 +262,7 @@ fun viewsearch(
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                     ) {
                         SearchTab.entries.forEach { t ->
-                            GlassChip(
+                            chip(
                                 label = t.label,
                                 selected = tab == t,
                                 onClick = { runsearch(submitted, t) },
@@ -277,7 +277,7 @@ fun viewsearch(
                     ) {
                         DiscoverPane.entries.forEach { item ->
                             val active = pane == item
-                            val tint = if (active) glass.accent else glass.inkSecondary
+                            val tint = if (active) glassTokens.accent else glassTokens.inkSecondary
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
@@ -303,7 +303,7 @@ fun viewsearch(
                                         .width(68.dp)
                                         .height(3.dp)
                                         .clip(RoundedCornerShape(999.dp))
-                                        .background(if (active) glass.accent else Color.Transparent),
+                                        .background(if (active) glassTokens.accent else Color.Transparent),
                                 )
                             }
                         }
@@ -333,13 +333,13 @@ fun viewsearch(
                                 }
                                 .padding(horizontal = 22.dp, vertical = 12.dp),
                         ) {
-                            Icon(ZIcons.Search, null, tint = glass.inkSecondary, modifier = Modifier.size(18.dp))
+                            Icon(ZIcons.Search, null, tint = glassTokens.inkSecondary, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(14.dp))
-                            Text(sug, style = MaterialTheme.typography.titleMedium, color = glass.ink)
+                            Text(sug, style = MaterialTheme.typography.titleMedium, color = glassTokens.ink)
                         }
                     }
                     items(suggestedItems, key = { it.key }) { item ->
-                        RenderFeedRow(item, playback.current?.id, onNavigate, onTrackMenu) { song ->
+                        feedrow(item, playback.current?.id, onNavigate, onTrackMenu) { song ->
                             hub.pilot.audioplay(song, "Search")
                         }
                     }
@@ -347,7 +347,7 @@ fun viewsearch(
                     if (recentSearches.isNotEmpty()) {
                         item(key = "recent_head") {
                             Spacer(Modifier.height(6.dp))
-                            SectionHeader(
+                            sectionbar(
                                 title = "Recent searches",
                                 actionLabel = "Clear",
                                 onAction = { hub.clearsearches() },
@@ -362,7 +362,7 @@ fun viewsearch(
                                     .padding(horizontal = 18.dp, vertical = 4.dp),
                             ) {
                                 recentSearches.take(10).forEach { term ->
-                                    GlassChip(
+                                    chip(
                                         label = term,
                                         selected = false,
                                         leadingIcon = ZIcons.History,
@@ -379,25 +379,23 @@ fun viewsearch(
                     if (uniqueSongs.isNotEmpty()) {
                         item(key = "unique_head") {
                             Spacer(Modifier.height(10.dp))
-                            SectionHeader(
+                            sectionbar(
                                 title = "Unique Songs",
                                 actionLabel = "Play all",
                                 onAction = {
-                                    hub.pilot.playtracks(uniqueSongs, 0, "Unique Songs", fetchRadio = true)
+                                    hub.pilot.playtracks(uniqueSongs, 0, "Unique Songs")
                                 },
                             )
                         }
-                        itemsIndexed(uniqueSongs, key = { _, s -> s.id }) { idx, song ->
-                            SongRow(
+                        itemsIndexed(uniqueSongs, key = { _, s -> s.id }) { _, song ->
+                            songrow(
                                 track = song,
-                                indexNumber = idx + 1,
                                 playing = playback.current?.id == song.id,
-                                cardBackground = true,
                                 onClick = {
-                                    hub.pilot.playtracks(uniqueSongs, idx, "Unique Songs", fetchRadio = true)
+                                    hub.pilot.audioplay(song, "Unique Songs")
                                 },
                                 onMore = { onTrackMenu(song) },
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp),
                             )
                         }
                     }
@@ -410,7 +408,7 @@ fun viewsearch(
                                     .fillMaxWidth()
                                     .padding(vertical = 64.dp),
                             ) {
-                                CircularProgressIndicator(color = glass.accent)
+                                CircularProgressIndicator(color = glassTokens.accent)
                             }
                         }
                     }
@@ -418,7 +416,7 @@ fun viewsearch(
                     if (explore.releases.isNotEmpty()) {
                         item(key = "exp_releases_head") {
                             Spacer(Modifier.height(10.dp))
-                            SectionHeader(title = "New Releases")
+                            sectionbar(title = "New Releases")
                         }
                         item(key = "exp_releases_row") {
                             LazyRow(
@@ -426,7 +424,7 @@ fun viewsearch(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 items(explore.releases, key = { it.id }) { album ->
-                                    AlbumGridCard(album = album) {
+                                    albumcard(album = album) {
                                         onNavigate(Route.Album(album.id))
                                     }
                                 }
@@ -437,7 +435,7 @@ fun viewsearch(
                     explore.charts.forEachIndexed { cIdx, chart ->
                         item(key = "exp_chart_head_$cIdx") {
                             Spacer(Modifier.height(10.dp))
-                            SectionHeader(title = chart.title)
+                            sectionbar(title = chart.title)
                         }
                         item(key = "exp_chart_row_$cIdx") {
                             val songs = chart.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
@@ -450,12 +448,11 @@ fun viewsearch(
                                     items(cols) { group ->
                                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                             group.forEach { song ->
-                                                QuickPickTile(
+                                                picktile(
                                                     track = song,
                                                     playing = playback.current?.id == song.id,
                                                     onClick = {
-                                                        val idx = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-                                                        hub.pilot.playtracks(songs, idx, chart.title)
+                                                        hub.pilot.audioplay(song, chart.title)
                                                     },
                                                     onMore = { onTrackMenu(song) },
                                                 )
@@ -469,7 +466,7 @@ fun viewsearch(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
                                     items(chart.items, key = { it.key }) { entry ->
-                                        MediaCard(
+                                        mediacard(
                                             item = entry,
                                             onClick = {
                                                 when (entry) {
@@ -489,7 +486,7 @@ fun viewsearch(
                     if (explore.moods.isNotEmpty()) {
                         item(key = "exp_moods_head") {
                             Spacer(Modifier.height(12.dp))
-                            SectionHeader(title = "Moods & Genres")
+                            sectionbar(title = "Moods & Genres")
                         }
                         val pairs = explore.moods.chunked(2)
                         items(pairs) { rowItems ->
@@ -501,7 +498,7 @@ fun viewsearch(
                             ) {
                                 rowItems.forEach { tile ->
                                     val stripe = Color(tile.stripeColor or 0xFF000000L)
-                                    GlassBox(
+                                    glass(
                                         shape = RoundedCornerShape(16.dp),
                                         elevated = true,
                                         onClick = {
@@ -525,7 +522,7 @@ fun viewsearch(
                                             Text(
                                                 text = tile.title,
                                                 style = MaterialTheme.typography.titleMedium,
-                                                color = glass.ink,
+                                                color = glassTokens.ink,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                                 modifier = Modifier.padding(horizontal = 14.dp),
@@ -545,13 +542,13 @@ fun viewsearch(
                     page.shelves.forEachIndexed { idx, shelf ->
                         item(key = "s_head_$idx") {
                             Spacer(Modifier.height(8.dp))
-                            SectionHeader(title = shelf.title)
+                            sectionbar(title = shelf.title)
                         }
                         val allSongs = shelf.items.all { it is FeedItem.SongCard }
                         if (allSongs) {
                             val songs = shelf.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
                             items(songs, key = { "${idx}_${it.id}" }) { song ->
-                                SongRow(
+                                songrow(
                                     track = song,
                                     playing = playback.current?.id == song.id,
                                     onClick = { hub.pilot.audioplay(song, submitted) },
@@ -566,7 +563,7 @@ fun viewsearch(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
                                     items(shelf.items, key = { it.key }) { item ->
-                                        MediaCard(
+                                        mediacard(
                                             item = item,
                                             onClick = {
                                                 when (item) {
@@ -584,7 +581,7 @@ fun viewsearch(
                     }
                 } else {
                     items(page.items, key = { it.key }) { item ->
-                        RenderFeedRow(item, playback.current?.id, onNavigate, onTrackMenu) { song ->
+                        feedrow(item, playback.current?.id, onNavigate, onTrackMenu) { song ->
                             hub.pilot.audioplay(song, submitted)
                         }
                     }
@@ -598,7 +595,7 @@ fun viewsearch(
                                 .fillMaxWidth()
                                 .padding(vertical = 32.dp),
                         ) {
-                            CircularProgressIndicator(color = glass.accent)
+                            CircularProgressIndicator(color = glassTokens.accent)
                         }
                     }
                 }
@@ -608,16 +605,16 @@ fun viewsearch(
 }
 
 @Composable
-private fun RenderFeedRow(
+private fun feedrow(
     item: FeedItem,
     playingId: String?,
     onNavigate: (Route) -> Unit,
     onTrackMenu: (Track) -> Unit,
     onPlaySong: (Track) -> Unit,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     when (item) {
-        is FeedItem.SongCard -> SongRow(
+        is FeedItem.SongCard -> songrow(
             track = item.track,
             playing = playingId == item.track.id,
             onClick = { onPlaySong(item.track) },
@@ -632,21 +629,21 @@ private fun RenderFeedRow(
                 .clickable { onNavigate(Route.Album(item.album.id)) }
                 .padding(horizontal = 18.dp, vertical = 8.dp),
         ) {
-            ArtImage(item.album.artwork, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(52.dp))
+            artimage(item.album.artwork, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(52.dp))
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(item.album.title, style = MaterialTheme.typography.titleMedium, color = glass.ink, maxLines = 1)
+                Text(item.album.title, style = MaterialTheme.typography.titleMedium, color = glassTokens.ink, maxLines = 1)
                 Text(
                     listOfNotNull(
                         item.album.artists.joinToString(", ") { it.name }.takeIf { it.isNotBlank() },
                         item.album.year?.toString(),
                     ).joinToString(" - ").ifBlank { "Album" },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = glass.inkSecondary,
+                    color = glassTokens.inkSecondary,
                     maxLines = 1,
                 )
             }
-            Icon(ZIcons.ChevronRight, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
+            Icon(ZIcons.ChevronRight, null, tint = glassTokens.inkMuted, modifier = Modifier.size(18.dp))
         }
 
         is FeedItem.ArtistCard -> Row(
@@ -656,13 +653,13 @@ private fun RenderFeedRow(
                 .clickable { onNavigate(Route.Artist(item.artist.id)) }
                 .padding(horizontal = 18.dp, vertical = 8.dp),
         ) {
-            ArtImage(item.artist.artwork, shape = CircleShape, fallbackIcon = ZIcons.Artist, modifier = Modifier.size(52.dp))
+            artimage(item.artist.artwork, shape = CircleShape, fallbackIcon = ZIcons.Artist, modifier = Modifier.size(52.dp))
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(item.artist.name, style = MaterialTheme.typography.titleMedium, color = glass.ink, maxLines = 1)
-                Text(item.artist.subscribers ?: "Artist", style = MaterialTheme.typography.bodyMedium, color = glass.inkSecondary, maxLines = 1)
+                Text(item.artist.name, style = MaterialTheme.typography.titleMedium, color = glassTokens.ink, maxLines = 1)
+                Text(item.artist.subscribers ?: "Artist", style = MaterialTheme.typography.bodyMedium, color = glassTokens.inkSecondary, maxLines = 1)
             }
-            Icon(ZIcons.ChevronRight, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
+            Icon(ZIcons.ChevronRight, null, tint = glassTokens.inkMuted, modifier = Modifier.size(18.dp))
         }
 
         is FeedItem.PlaylistCard -> Row(
@@ -672,18 +669,18 @@ private fun RenderFeedRow(
                 .clickable { onNavigate(Route.Playlist(item.playlist.id)) }
                 .padding(horizontal = 18.dp, vertical = 8.dp),
         ) {
-            ArtImage(item.playlist.artwork, shape = RoundedCornerShape(12.dp), fallbackIcon = ZIcons.Playlist, modifier = Modifier.size(52.dp))
+            artimage(item.playlist.artwork, shape = RoundedCornerShape(12.dp), fallbackIcon = ZIcons.Playlist, modifier = Modifier.size(52.dp))
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(item.playlist.title, style = MaterialTheme.typography.titleMedium, color = glass.ink, maxLines = 1)
+                Text(item.playlist.title, style = MaterialTheme.typography.titleMedium, color = glassTokens.ink, maxLines = 1)
                 Text(
                     listOfNotNull(item.playlist.author, item.playlist.countText).joinToString(" - ").ifBlank { "Playlist" },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = glass.inkSecondary,
+                    color = glassTokens.inkSecondary,
                     maxLines = 1,
                 )
             }
-            Icon(ZIcons.ChevronRight, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
+            Icon(ZIcons.ChevronRight, null, tint = glassTokens.inkMuted, modifier = Modifier.size(18.dp))
         }
     }
 }

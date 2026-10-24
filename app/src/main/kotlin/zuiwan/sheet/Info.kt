@@ -22,21 +22,21 @@ import zuiwan.model.Track
 import zuiwan.model.artistline
 import zuiwan.model.formatclock
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.GlassBox
+import zuiwan.ui.glass
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TrackInfoSheet(
+fun infosheet(
     track: Track,
     onDismiss: () -> Unit,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = glass.glassStrong,
-        contentColor = glass.ink,
+        containerColor = glassTokens.glassStrong,
+        contentColor = glassTokens.ink,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
     ) {
         Column(
@@ -46,23 +46,23 @@ fun TrackInfoSheet(
                 .padding(horizontal = 22.dp)
                 .padding(bottom = 24.dp),
         ) {
-            Text("Song Info", style = MaterialTheme.typography.headlineSmall, color = glass.ink)
+            Text("Song Info", style = MaterialTheme.typography.headlineSmall, color = glassTokens.ink)
             Spacer(Modifier.height(14.dp))
-            GlassBox(
+            glass(
                 shape = RoundedCornerShape(20.dp),
                 elevated = true,
                 contentPadding = PaddingValues(18.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    InfoLine("Title", track.title)
-                    InfoLine("Artists", track.artistline())
-                    track.album?.name?.let { InfoLine("Album", it) }
+                    inforow("Title", track.title)
+                    inforow("Artists", track.artistline())
+                    track.album?.name?.let { inforow("Album", it) }
                     if (track.duration > 0) {
-                        InfoLine("Duration", formatclock(track.duration * 1_000L))
+                        inforow("Duration", formatclock(track.duration * 1_000L))
                     }
-                    InfoLine("Explicit", if (track.explicit) "Yes" else "No")
-                    InfoLine("Video ID", track.id)
+                    inforow("Explicit", if (track.explicit) "Yes" else "No")
+                    inforow("Video ID", track.id)
                 }
             }
         }
@@ -70,13 +70,13 @@ fun TrackInfoSheet(
 }
 
 @Composable
-private fun InfoLine(label: String, value: String) {
-    val glass = LocalGlass.current
+private fun inforow(label: String, value: String) {
+    val glassTokens = LocalGlass.current
     Row(
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = glass.inkSecondary)
-        Text(value, style = MaterialTheme.typography.labelLarge, color = glass.ink)
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = glassTokens.inkSecondary)
+        Text(value, style = MaterialTheme.typography.labelLarge, color = glassTokens.ink)
     }
 }

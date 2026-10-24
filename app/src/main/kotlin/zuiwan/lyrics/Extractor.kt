@@ -55,7 +55,7 @@ class LyricsExtractor(
             }
         }
 
-        tube.fetchtubelyrics(track.id).getOrNull()?.let { (raw, _) ->
+        tube.tubelyrics(track.id).getOrNull()?.let { (raw, _) ->
             val parsed = LyricParser.parselyrics(raw, "YouTube Music", romanize)
             if (parsed.lines.isNotEmpty()) {
                 persist(track.id, parsed)

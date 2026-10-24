@@ -49,7 +49,7 @@ class BetterSource(private val http: HttpClient) {
         for (i in 0 until paragraphs.length) {
             val p = paragraphs.item(i) as? Element ?: continue
             val beginStr = p.getAttribute("begin").takeIf { it.isNotBlank() } ?: continue
-            val lineStartSec = parsettmlsec(beginStr)
+            val lineStartSec = parsesec(beginStr)
 
             val wordEntries = mutableListOf<Pair<Double, String>>()
             val plainBuilder = StringBuilder()
@@ -67,7 +67,7 @@ class BetterSource(private val http: HttpClient) {
                         val wBegin = span.getAttribute("begin")
                         if (wBegin.isNotBlank() && txt.isNotBlank()) {
                             val trail = if (j + 1 < children.length && children.item(j + 1).nodeType == Node.TEXT_NODE && children.item(j + 1).textContent.contains(' ')) " " else ""
-                            wordEntries += parsettmlsec(wBegin) to (txt.trim() + trail)
+                            wordEntries += parsesec(wBegin) to (txt.trim() + trail)
                         }
                         plainBuilder.append(txt)
                     }
@@ -90,7 +90,7 @@ class BetterSource(private val http: HttpClient) {
         return lines.joinToString("\n")
     }
 
-    private fun parsettmlsec(raw: String): Double {
+    private fun parsesec(raw: String): Double {
         val clean = raw.trim().removeSuffix("s")
         if (clean.endsWith("ms")) {
             return (clean.removeSuffix("ms").toDoubleOrNull() ?: 0.0) / 1_000.0

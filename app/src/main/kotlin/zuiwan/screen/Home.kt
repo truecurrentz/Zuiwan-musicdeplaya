@@ -31,19 +31,20 @@ import androidx.compose.ui.unit.dp
 import zuiwan.model.ArtistSummary
 import zuiwan.model.FeedItem
 import zuiwan.model.Track
+import zuiwan.model.trackart
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.BrandBar
-import zuiwan.ui.GlassChip
-import zuiwan.ui.GlassIconButton
-import zuiwan.ui.GlassPillButton
-import zuiwan.ui.MediaCard
-import zuiwan.ui.QuickPickTile
+import zuiwan.ui.brandbar
+import zuiwan.ui.chip
+import zuiwan.ui.iconbtn
+import zuiwan.ui.pillbtn
+import zuiwan.ui.mediacard
+import zuiwan.ui.picktile
 import zuiwan.ui.Route
-import zuiwan.ui.ScrollHeaderHost
-import zuiwan.ui.SectionHeader
+import zuiwan.ui.scrollhost
+import zuiwan.ui.sectionbar
 import zuiwan.ui.ZIcons
-import zuiwan.ui.rememberheaderscroll
+import zuiwan.ui.headerscroll
 
 @Composable
 fun viewhome(
@@ -52,16 +53,17 @@ fun viewhome(
     bottomPadding: PaddingValues,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
 
     val feed by hub.homeFeed.collectAsState()
     val loading by hub.homeLoading.collectAsState()
     val error by hub.homeError.collectAsState()
     val selectedChip by hub.selectedChip.collectAsState()
     val history by hub.historyTracks.collectAsState()
+    val savedArtists by hub.savedArtists.collectAsState()
     val playback by hub.pilot.state.collectAsState()
 
-    val headerScroll = rememberheaderscroll()
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
 
     val lifted by remember {
@@ -84,35 +86,37 @@ fun viewhome(
         }
     }
 
-    val keepListeningArtists = remember(history) {
+    val keepListeningArtists = remember(history, savedArtists) {
+        val artistArt = savedArtists.associate { it.id to it.artwork }
         history
             .mapNotNull { track ->
                 val ref = track.artists.firstOrNull { !it.id.isNullOrBlank() } ?: return@mapNotNull null
+                val aid = ref.id!!
                 ArtistSummary(
-                    id = ref.id!!,
+                    id = aid,
                     name = ref.name,
-                    artwork = track.artwork,
+                    artwork = artistArt[aid].orEmpty().ifBlank { track.trackart() },
                 )
             }
             .distinctBy { it.id }
             .take(8)
     }
 
-    ScrollHeaderHost(
+    scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         header = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                BrandBar {
-                    GlassIconButton(
+                brandbar {
+                    iconbtn(
                         icon = ZIcons.History,
                         onClick = { onNavigate(Route.History) },
                     )
-                    GlassIconButton(
+                    iconbtn(
                         icon = ZIcons.Stats,
                         onClick = { onNavigate(Route.Stats) },
                     )
-                    GlassIconButton(
+                    iconbtn(
                         icon = ZIcons.Settings,
                         onClick = { onNavigate(Route.Settings) },
                     )
@@ -126,12 +130,12 @@ fun viewhome(
                             .horizontalScroll(rememberScrollState())
                             .padding(start = 18.dp, end = 18.dp, bottom = 10.dp),
                     ) {
-                        feed.chips.forEach { chip ->
-                            val active = selectedChip?.params == chip.params
-                            GlassChip(
-                                label = chip.title,
+                        feed.chips.forEach { mood ->
+                            val active = selectedChip?.params == mood.params
+                            chip(
+                                label = mood.title,
                                 selected = active,
-                                onClick = { hub.refreshhome(if (active) null else chip) },
+                                onClick = { hub.refreshhome(if (active) null else mood) },
                             )
                         }
                     }
@@ -150,10 +154,10 @@ fun viewhome(
             if (history.isNotEmpty() && selectedChip == null && feed.shelves.none { it.title.contains("Quick", ignoreCase = true) }) {
                 item(key = "quick_recent_head") {
                     Spacer(Modifier.height(6.dp))
-                    SectionHeader(
+                    sectionbar(
                         title = "Quick picks",
                         actionLabel = "Play all",
-                        onAction = { hub.pilot.playtracks(history.take(20), 0, "Quick picks", fetchRadio = true) },
+                        onAction = { hub.pilot.playtracks(history.take(20), 0, "Quick picks") },
                     )
                 }
                 item(key = "quick_recent_row") {
@@ -165,7 +169,7 @@ fun viewhome(
                         items(cols) { group ->
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 group.forEach { song ->
-                                    QuickPickTile(
+                                    picktile(
                                         track = song,
                                         playing = playback.current?.id == song.id,
                                         onClick = { hub.pilot.audioplay(song, "Quick picks") },
@@ -181,7 +185,7 @@ fun viewhome(
             if (keepListeningArtists.isNotEmpty() && selectedChip == null) {
                 item(key = "keep_listening_head") {
                     Spacer(Modifier.height(10.dp))
-                    SectionHeader(
+                    sectionbar(
                         title = "Keep listening",
                         actionLabel = "History",
                         onAction = { onNavigate(Route.History) },
@@ -193,7 +197,7 @@ fun viewhome(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         items(keepListeningArtists, key = { it.id }) { artist ->
-                            MediaCard(
+                            mediacard(
                                 item = FeedItem.ArtistCard(artist),
                                 width = 148.dp,
                                 onClick = { onNavigate(Route.Artist(artist.id)) },
@@ -211,7 +215,7 @@ fun viewhome(
                             .fillMaxWidth()
                             .padding(vertical = 72.dp),
                     ) {
-                        CircularProgressIndicator(color = glass.accent)
+                        CircularProgressIndicator(color = glassTokens.accent)
                     }
                 }
             } else if (error != null && feed.shelves.isEmpty()) {
@@ -225,10 +229,10 @@ fun viewhome(
                         Text(
                             text = error ?: "Connection issue",
                             style = MaterialTheme.typography.titleMedium,
-                            color = glass.inkSecondary,
+                            color = glassTokens.inkSecondary,
                         )
                         Spacer(Modifier.height(14.dp))
-                        GlassPillButton(
+                        pillbtn(
                             text = "Retry",
                             icon = ZIcons.Refresh,
                             primary = true,
@@ -242,7 +246,7 @@ fun viewhome(
                 val allSongs = shelf.items.all { it is FeedItem.SongCard }
                 item(key = "shelf_head_$shelfIdx") {
                     Spacer(Modifier.height(12.dp))
-                    SectionHeader(
+                    sectionbar(
                         title = shelf.title,
                         subtitle = shelf.subtitle,
                         actionLabel = when {
@@ -253,7 +257,7 @@ fun viewhome(
                         onAction = {
                             if (allSongs && shelf.items.size > 1) {
                                 val tracks = shelf.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
-                                hub.pilot.playtracks(tracks, 0, shelf.title, fetchRadio = true)
+                                hub.pilot.playtracks(tracks, 0, shelf.title)
                             } else if (shelf.browseId != null) {
                                 onNavigate(Route.Browse(shelf.browseId, shelf.params, shelf.title))
                             }
@@ -272,13 +276,10 @@ fun viewhome(
                             items(columns) { group ->
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     group.forEach { song ->
-                                        QuickPickTile(
+                                        picktile(
                                             track = song,
                                             playing = playback.current?.id == song.id,
-                                            onClick = {
-                                                val start = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-                                                hub.pilot.playtracks(songs, start, shelf.title, fetchRadio = true)
-                                            },
+                                            onClick = { hub.pilot.audioplay(song, shelf.title) },
                                             onMore = { onTrackMenu(song) },
                                         )
                                     }
@@ -291,7 +292,7 @@ fun viewhome(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             items(shelf.items, key = { it.key }) { entry ->
-                                MediaCard(
+                                mediacard(
                                     item = entry,
                                     onClick = {
                                         when (entry) {

@@ -12,7 +12,7 @@ import androidx.core.view.WindowCompat
 import zuiwan.model.ThemeChoice
 
 @Composable
-fun ZuiwanTheme(
+fun apptheme(
     choice: ThemeChoice,
     dynamicColors: Boolean,
     blurEnabled: Boolean = true,
@@ -20,7 +20,7 @@ fun ZuiwanTheme(
     content: @Composable () -> Unit,
 ) {
     val useDark = choice == ThemeChoice.DARK
-    val (artPrimary, artSecondary) = rememberartcolors(artworkUrl, dynamicColors, useDark)
+    val (artPrimary, artSecondary) = artcolors(artworkUrl, dynamicColors, useDark)
 
     val glass = if (useDark) {
         darkglass(artPrimary, artSecondary, blurEnabled = blurEnabled)

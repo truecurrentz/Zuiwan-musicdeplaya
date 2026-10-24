@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import zuiwan.model.Track
 import zuiwan.model.artistline
+import zuiwan.model.trackart
 import java.util.concurrent.ConcurrentHashMap
 
 class QueueBook {
@@ -38,21 +39,23 @@ class QueueBook {
         seedVideoId = seedId
     }
 
-    fun tomediaitem(track: Track): MediaItem {
-        register(track)
+    fun mediaitem(track: Track): MediaItem {
+        val art = track.trackart()
+        val enriched = if (track.artwork.isBlank() && art.isNotBlank()) track.copy(artwork = art) else track
+        register(enriched)
         val meta = MediaMetadata.Builder()
-            .setTitle(track.title)
-            .setArtist(track.artistline())
-            .setAlbumTitle(track.album?.name)
-            .setArtworkUri(track.artwork.takeIf { it.isNotBlank() }?.toUri())
+            .setTitle(enriched.title)
+            .setArtist(enriched.artistline())
+            .setAlbumTitle(enriched.album?.name)
+            .setArtworkUri(art.takeIf { it.isNotBlank() }?.toUri())
             .setIsPlayable(true)
             .build()
         return MediaItem.Builder()
-            .setMediaId(track.id)
-            .setUri("https://music.youtube.com/watch?v=${track.id}")
-            .setCustomCacheKey(track.id)
+            .setMediaId(enriched.id)
+            .setUri("https://music.youtube.com/watch?v=${enriched.id}")
+            .setCustomCacheKey(enriched.id)
             .setMediaMetadata(meta)
-            .setTag(track)
+            .setTag(enriched)
             .build()
     }
 }

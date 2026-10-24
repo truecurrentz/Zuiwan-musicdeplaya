@@ -27,19 +27,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import zuiwan.model.AlbumDetail
 import zuiwan.model.Track
+import zuiwan.model.trackart
 import zuiwan.model.upscaleart
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.AlbumGridCard
-import zuiwan.ui.DetailHero
-import zuiwan.ui.GlassIconButton
-import zuiwan.ui.GlassTopBar
+import zuiwan.ui.albumcard
+import zuiwan.ui.hero
+import zuiwan.ui.iconbtn
+import zuiwan.ui.topbar
 import zuiwan.ui.Route
-import zuiwan.ui.ScrollHeaderHost
-import zuiwan.ui.SectionHeader
-import zuiwan.ui.SongRow
+import zuiwan.ui.scrollhost
+import zuiwan.ui.sectionbar
+import zuiwan.ui.songrow
 import zuiwan.ui.ZIcons
-import zuiwan.ui.rememberheaderscroll
+import zuiwan.ui.headerscroll
 
 @Composable
 fun viewalbum(
@@ -50,14 +51,14 @@ fun viewalbum(
     bottomPadding: PaddingValues,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val savedAlbums by hub.savedAlbums.collectAsState()
     val playback by hub.pilot.state.collectAsState()
 
     var detail by remember(albumId) { mutableStateOf<AlbumDetail?>(null) }
     var loading by remember(albumId) { mutableStateOf(true) }
 
-    val headerScroll = rememberheaderscroll()
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
 
     val lifted by remember {
@@ -79,18 +80,18 @@ fun viewalbum(
 
     val saved = savedAlbums.any { it.id == albumId }
 
-    ScrollHeaderHost(
+    scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         overlayHero = true,
         header = {
-            GlassTopBar(
+            topbar(
                 title = detail?.album?.title ?: "Album",
                 showTitle = pastHero || detail == null,
                 onBack = onBack,
                 actions = {
                     detail?.let { info ->
-                        GlassIconButton(
+                        iconbtn(
                             icon = ZIcons.Download,
                             onClick = { info.tracks.forEach { hub.vault.downloadtrack(it) } },
                         )
@@ -112,7 +113,7 @@ fun viewalbum(
                             .fillMaxWidth()
                             .padding(top = 140.dp, bottom = 80.dp),
                     ) {
-                        CircularProgressIndicator(color = glass.accent)
+                        CircularProgressIndicator(color = glassTokens.accent)
                     }
                 }
             }
@@ -128,9 +129,11 @@ fun viewalbum(
                 ).joinToString(" - ")
 
                 item(key = "hero") {
-                    DetailHero(
+                    hero(
                         title = info.album.title,
-                        artworkUrl = upscaleart(info.album.artwork, 1080),
+                        artworkUrl = upscaleart(info.album.artwork, 1080).ifBlank {
+                            info.tracks.firstOrNull()?.trackart(1080).orEmpty()
+                        },
                         fallbackIcon = ZIcons.Album,
                         subtitle = artistText.ifBlank { null },
                         onSubtitleClick = info.album.artists.firstOrNull()?.id?.let { aid ->
@@ -139,15 +142,15 @@ fun viewalbum(
                         metadata = metaText,
                         description = info.description?.takeIf { it.isNotBlank() },
                         primaryActions = {
-                            GlassIconButton(
+                            iconbtn(
                                 icon = if (saved) ZIcons.HeartFilled else ZIcons.Heart,
                                 active = saved,
                                 softFill = true,
                                 size = 48.dp,
                                 iconSize = 21.dp,
-                                onClick = { hub.togglesavealbum(info.album) },
+                                onClick = { hub.savealbum(info.album) },
                             )
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.Play,
                                 solidAccent = true,
                                 size = 64.dp,
@@ -156,7 +159,7 @@ fun viewalbum(
                                     hub.pilot.playtracks(info.tracks, 0, info.album.title)
                                 },
                             )
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.Shuffle,
                                 softFill = true,
                                 size = 48.dp,
@@ -170,7 +173,7 @@ fun viewalbum(
                 }
 
                 itemsIndexed(info.tracks, key = { idx, t -> "${t.id}_$idx" }) { idx, song ->
-                    SongRow(
+                    songrow(
                         track = song,
                         indexNumber = idx + 1,
                         playing = playback.current?.id == song.id,
@@ -183,7 +186,7 @@ fun viewalbum(
                 if (info.versions.isNotEmpty()) {
                     item(key = "versions_head") {
                         Spacer(Modifier.height(16.dp))
-                        SectionHeader(title = "Other Versions")
+                        sectionbar(title = "Other Versions")
                     }
                     item(key = "versions_row") {
                         LazyRow(
@@ -191,7 +194,7 @@ fun viewalbum(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             items(info.versions, key = { it.id }) { alt ->
-                                AlbumGridCard(alt) { onNavigate(Route.Album(alt.id)) }
+                                albumcard(alt) { onNavigate(Route.Album(alt.id)) }
                             }
                         }
                     }

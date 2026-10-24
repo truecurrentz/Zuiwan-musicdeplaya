@@ -117,15 +117,43 @@ fun List<RunToken>.extractartists(): List<ArtistRef> {
     return emptyList()
 }
 
-fun JsonElement?.lastthumb(): String {
+fun JsonElement?.lastthumb(depth: Int = 0): String {
+    if (this == null || depth > 7) return ""
+    if (this is JsonArray) {
+        val directUrl = this.lastOrNull().obj()?.get("url").str()
+        if (!directUrl.isNullOrBlank()) {
+            return if (directUrl.startsWith("//")) "https:$directUrl" else directUrl
+        }
+        for (i in this.lastIndex downTo 0) {
+            val sub = this[i].lastthumb(depth + 1)
+            if (sub.isNotBlank()) return sub
+        }
+        return ""
+    }
     val o = this.obj() ?: return ""
-    val candidates = listOfNotNull(
-        o.patharr("musicThumbnailRenderer", "thumbnail", "thumbnails"),
-        o.patharr("croppedSquareThumbnailRenderer", "thumbnail", "thumbnails"),
-        o.patharr("thumbnail", "thumbnails"),
-        o["thumbnails"].arr(),
-    ).firstOrNull() ?: return ""
-    return candidates.lastOrNull().obj()?.get("url").str().orEmpty()
+    val direct = o["thumbnails"].arr() ?: o["sources"].arr()
+    if (direct != null) {
+        val url = direct.lastOrNull().obj()?.get("url").str()
+        if (!url.isNullOrBlank()) {
+            return if (url.startsWith("//")) "https:$url" else url
+        }
+    }
+    val keys = listOf(
+        "musicThumbnailRenderer",
+        "croppedSquareThumbnailRenderer",
+        "thumbnailRenderer",
+        "musicAnimatedThumbnailRenderer",
+        "backupRenderer",
+        "foregroundThumbnail",
+        "avatar",
+        "thumbnail",
+        "image",
+    )
+    for (k in keys) {
+        val hit = o[k]?.lastthumb(depth + 1).orEmpty()
+        if (hit.isNotBlank()) return hit
+    }
+    return ""
 }
 
 fun JsonElement?.findcontinuation(): String? {

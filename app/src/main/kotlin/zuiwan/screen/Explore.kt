@@ -39,18 +39,18 @@ import zuiwan.model.FeedShelf
 import zuiwan.model.Track
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.AlbumGridCard
-import zuiwan.ui.GlassBox
-import zuiwan.ui.GlassIconButton
-import zuiwan.ui.GlassTopBar
-import zuiwan.ui.MediaCard
-import zuiwan.ui.QuickPickTile
+import zuiwan.ui.albumcard
+import zuiwan.ui.glass
+import zuiwan.ui.iconbtn
+import zuiwan.ui.topbar
+import zuiwan.ui.mediacard
+import zuiwan.ui.picktile
 import zuiwan.ui.Route
-import zuiwan.ui.ScrollHeaderHost
-import zuiwan.ui.SectionHeader
-import zuiwan.ui.SongRow
+import zuiwan.ui.scrollhost
+import zuiwan.ui.sectionbar
+import zuiwan.ui.songrow
 import zuiwan.ui.ZIcons
-import zuiwan.ui.rememberheaderscroll
+import zuiwan.ui.headerscroll
 
 @Composable
 fun viewexplore(
@@ -59,12 +59,12 @@ fun viewexplore(
     bottomPadding: PaddingValues,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val explore by hub.exploreFeed.collectAsState()
     val loading by hub.exploreLoading.collectAsState()
     val playback by hub.pilot.state.collectAsState()
 
-    val headerScroll = rememberheaderscroll()
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
     val lifted by remember {
         derivedStateOf {
@@ -72,12 +72,12 @@ fun viewexplore(
         }
     }
 
-    ScrollHeaderHost(
+    scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         header = {
-            GlassTopBar(title = "Explore") {
-                GlassIconButton(
+            topbar(title = "Explore") {
+                iconbtn(
                     icon = ZIcons.Refresh,
                     onClick = { hub.refreshexplore() },
                 )
@@ -100,14 +100,14 @@ fun viewexplore(
                             .fillMaxWidth()
                             .padding(vertical = 72.dp),
                     ) {
-                        CircularProgressIndicator(color = glass.accent)
+                        CircularProgressIndicator(color = glassTokens.accent)
                     }
                 }
             }
 
             if (explore.releases.isNotEmpty()) {
                 item(key = "releases_head") {
-                    SectionHeader(title = "New Releases", subtitle = "Fresh Albums & Singles")
+                    sectionbar(title = "New Releases", subtitle = "Fresh Albums & Singles")
                 }
                 item(key = "releases_row") {
                     LazyRow(
@@ -115,7 +115,7 @@ fun viewexplore(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(explore.releases, key = { it.id }) { album ->
-                            AlbumGridCard(album = album) {
+                            albumcard(album = album) {
                                 onNavigate(Route.Album(album.id))
                             }
                         }
@@ -124,12 +124,21 @@ fun viewexplore(
             }
 
             explore.charts.forEachIndexed { cIdx, chart ->
+                val songs = chart.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
                 item(key = "chart_head_$cIdx") {
                     Spacer(Modifier.height(10.dp))
-                    SectionHeader(title = chart.title, subtitle = "Global Charts")
+                    sectionbar(
+                        title = chart.title,
+                        subtitle = "Global Charts",
+                        actionLabel = if (songs.size > 1) "Play all" else null,
+                        onAction = if (songs.size > 1) {
+                            { hub.pilot.playtracks(songs, 0, chart.title) }
+                        } else {
+                            null
+                        },
+                    )
                 }
                 item(key = "chart_row_$cIdx") {
-                    val songs = chart.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
                     if (songs.isNotEmpty()) {
                         val cols = songs.take(15).chunked(3)
                         LazyRow(
@@ -139,12 +148,11 @@ fun viewexplore(
                             items(cols) { group ->
                                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                     group.forEach { song ->
-                                        QuickPickTile(
+                                        picktile(
                                             track = song,
                                             playing = playback.current?.id == song.id,
                                             onClick = {
-                                                val idx = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-                                                hub.pilot.playtracks(songs, idx, chart.title)
+                                                hub.pilot.audioplay(song, chart.title)
                                             },
                                             onMore = { onTrackMenu(song) },
                                         )
@@ -158,7 +166,7 @@ fun viewexplore(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             items(chart.items, key = { it.key }) { entry ->
-                                MediaCard(
+                                mediacard(
                                     item = entry,
                                     onClick = {
                                         when (entry) {
@@ -178,7 +186,7 @@ fun viewexplore(
             if (explore.moods.isNotEmpty()) {
                 item(key = "moods_head") {
                     Spacer(Modifier.height(12.dp))
-                    SectionHeader(title = "Moods & Genres", subtitle = "Curated Atmospheres")
+                    sectionbar(title = "Moods & Genres", subtitle = "Curated Atmospheres")
                 }
                 val pairs = explore.moods.chunked(2)
                 items(pairs) { rowItems ->
@@ -190,7 +198,7 @@ fun viewexplore(
                     ) {
                         rowItems.forEach { tile ->
                             val stripe = Color(tile.stripeColor or 0xFF000000L)
-                            GlassBox(
+                            glass(
                                 shape = RoundedCornerShape(16.dp),
                                 elevated = true,
                                 onClick = {
@@ -214,7 +222,7 @@ fun viewexplore(
                                     Text(
                                         text = tile.title,
                                         style = MaterialTheme.typography.titleMedium,
-                                        color = glass.ink,
+                                        color = glassTokens.ink,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.padding(horizontal = 14.dp),
@@ -243,12 +251,12 @@ fun viewbrowse(
     bottomPadding: PaddingValues,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val playback by hub.pilot.state.collectAsState()
     var shelves by remember(browseId, params) { mutableStateOf<List<FeedShelf>>(emptyList()) }
     var loading by remember(browseId, params) { mutableStateOf(true) }
 
-    val headerScroll = rememberheaderscroll()
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
     val lifted by remember {
         derivedStateOf {
@@ -262,11 +270,11 @@ fun viewbrowse(
         loading = false
     }
 
-    ScrollHeaderHost(
+    scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         header = {
-            GlassTopBar(title = title, onBack = onBack)
+            topbar(title = title, onBack = onBack)
         },
     ) { topPad ->
         LazyColumn(
@@ -285,24 +293,31 @@ fun viewbrowse(
                             .fillMaxWidth()
                             .padding(vertical = 64.dp),
                     ) {
-                        CircularProgressIndicator(color = glass.accent)
+                        CircularProgressIndicator(color = glassTokens.accent)
                     }
                 }
             }
             shelves.forEachIndexed { idx, shelf ->
-                item(key = "b_head_$idx") {
-                    SectionHeader(title = shelf.title, subtitle = shelf.subtitle)
-                }
                 val songs = shelf.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
-                if (songs.size == shelf.items.size && songs.isNotEmpty()) {
+                val onlySongs = songs.size == shelf.items.size && songs.isNotEmpty()
+                item(key = "b_head_$idx") {
+                    sectionbar(
+                        title = shelf.title,
+                        subtitle = shelf.subtitle,
+                        actionLabel = if (onlySongs && songs.size > 1) "Play all" else null,
+                        onAction = if (onlySongs && songs.size > 1) {
+                            { hub.pilot.playtracks(songs, 0, shelf.title) }
+                        } else {
+                            null
+                        },
+                    )
+                }
+                if (onlySongs) {
                     items(songs, key = { "${idx}_${it.id}" }) { song ->
-                        SongRow(
+                        songrow(
                             track = song,
                             playing = playback.current?.id == song.id,
-                            onClick = {
-                                val start = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-                                hub.pilot.playtracks(songs, start, shelf.title)
-                            },
+                            onClick = { hub.pilot.audioplay(song, shelf.title) },
                             onMore = { onTrackMenu(song) },
                             modifier = Modifier.padding(horizontal = 8.dp),
                         )
@@ -314,7 +329,7 @@ fun viewbrowse(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             items(shelf.items, key = { it.key }) { item ->
-                                MediaCard(
+                                mediacard(
                                     item = item,
                                     onClick = {
                                         when (item) {

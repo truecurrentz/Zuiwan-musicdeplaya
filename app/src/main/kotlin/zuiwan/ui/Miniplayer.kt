@@ -37,10 +37,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import zuiwan.audio.PlaybackState
 import zuiwan.model.artistline
+import zuiwan.model.fallbackart
+import zuiwan.model.trackart
 import zuiwan.theme.LocalGlass
 
 @Composable
-fun GlassMiniplayer(
+fun miniplayer(
     state: PlaybackState,
     liked: Boolean,
     onExpand: () -> Unit,
@@ -52,7 +54,7 @@ fun GlassMiniplayer(
     modifier: Modifier = Modifier,
 ) {
     val track = state.current ?: return
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val progress = if (state.durationMs > 0L) {
         (state.positionMs.toFloat() / state.durationMs.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -90,11 +92,10 @@ fun GlassMiniplayer(
                 )
             },
     ) {
-        GlassBox(
+        glass(
             shape = barShape,
             strong = true,
             frosted = true,
-            elevation = 14.dp,
             onClick = onExpand,
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
             modifier = Modifier
@@ -109,18 +110,11 @@ fun GlassMiniplayer(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.size(48.dp),
                 ) {
-                    Canvas(modifier = Modifier.size(48.dp)) {
-                        val stroke = 2.4.dp.toPx()
-                        drawArc(
-                            color = glass.glassBorder,
-                            startAngle = -90f,
-                            sweepAngle = 360f,
-                            useCenter = false,
-                            style = Stroke(width = stroke, cap = StrokeCap.Round),
-                        )
-                        if (progress > 0.01f) {
+                    if (progress > 0.01f) {
+                        Canvas(modifier = Modifier.size(48.dp)) {
+                            val stroke = 2.4.dp.toPx()
                             drawArc(
-                                color = glass.accent,
+                                color = glassTokens.accent,
                                 startAngle = -90f,
                                 sweepAngle = 360f * progress,
                                 useCenter = false,
@@ -128,10 +122,12 @@ fun GlassMiniplayer(
                             )
                         }
                     }
-                    ArtImage(
-                        url = track.artwork,
+                    artimage(
+                        url = track.trackart(),
+                        fallbackUrl = track.fallbackart(),
                         shape = CircleShape,
-                        modifier = Modifier.size(41.dp),
+                        fallbackIcon = ZIcons.Note,
+                        modifier = Modifier.size(42.dp),
                     )
                 }
 
@@ -141,7 +137,7 @@ fun GlassMiniplayer(
                     Text(
                         text = track.title,
                         style = MaterialTheme.typography.titleMedium,
-                        color = glass.ink,
+                        color = glassTokens.ink,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.basicMarquee(),
@@ -149,7 +145,7 @@ fun GlassMiniplayer(
                     Text(
                         text = track.artistline(),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = glass.inkSecondary,
+                        color = glassTokens.inkSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -161,7 +157,7 @@ fun GlassMiniplayer(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    GlassIconButton(
+                    iconbtn(
                         icon = ZIcons.FastRewind,
                         onClick = onPrev,
                         size = 38.dp,
@@ -173,12 +169,12 @@ fun GlassMiniplayer(
                         modifier = Modifier
                             .size(42.dp)
                             .clip(CircleShape)
-                            .background(glass.accent)
+                            .background(glassTokens.accent)
                             .clickable(onClick = onTogglePlay),
                     ) {
                         if (state.buffering) {
                             CircularProgressIndicator(
-                                color = glass.onAccent,
+                                color = glassTokens.onAccent,
                                 strokeWidth = 2.dp,
                                 modifier = Modifier.size(18.dp),
                             )
@@ -186,13 +182,13 @@ fun GlassMiniplayer(
                             Icon(
                                 imageVector = if (state.playing) ZIcons.Pause else ZIcons.Play,
                                 contentDescription = null,
-                                tint = glass.onAccent,
+                                tint = glassTokens.onAccent,
                                 modifier = Modifier.size(18.dp),
                             )
                         }
                     }
 
-                    GlassIconButton(
+                    iconbtn(
                         icon = ZIcons.FastForward,
                         onClick = onNext,
                         size = 38.dp,

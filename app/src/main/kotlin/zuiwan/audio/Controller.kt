@@ -32,7 +32,7 @@ import zuiwan.lyrics.LyricsExtractor
 import zuiwan.model.EqProfile
 import zuiwan.model.LyricPayload
 import zuiwan.model.Track
-import zuiwan.tube.ScrobbleClient
+import zuiwan.model.upscaleart
 import zuiwan.tube.TubeClient
 import kotlin.math.abs
 
@@ -57,7 +57,6 @@ class AudioPilot(
     private val dao: MusicDao,
     private val store: PrefStore,
     private val tube: TubeClient,
-    private val scrobbler: ScrobbleClient,
     private val lyricsExtractor: LyricsExtractor,
     private val equalizer: EqualizerProcessor,
     private val vault: AudioVault,
@@ -94,7 +93,7 @@ class AudioPilot(
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             recordlisten()
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
-                if (sleep.notifytrackend()) return
+                if (sleep.trackended()) return
             }
             activePlayStartMs = System.currentTimeMillis()
             activeLoggedTrackId = mediaItem?.mediaId
@@ -106,7 +105,7 @@ class AudioPilot(
                     if (existing == null) dao.puttrack(current.toentity())
                 }
                 refreshlyrics(current, force = false)
-                maybeautofill()
+                autofill()
             }
             persistqueue()
         }
@@ -175,7 +174,7 @@ class AudioPilot(
                 if (p != null) {
                     val pos = p.currentPosition.coerceAtLeast(0L)
                     val dur = p.duration.takeIf { it > 0L } ?: ((stateFlow.value.current?.duration ?: 0) * 1_000L)
-                    applycrossfaderamp(p, pos, dur)
+                    crossfade(p, pos, dur)
                     stateFlow.value = stateFlow.value.copy(
                         playing = p.isPlaying,
                         buffering = p.playbackState == Player.STATE_BUFFERING,
@@ -188,7 +187,7 @@ class AudioPilot(
         }
     }
 
-    private fun applycrossfaderamp(player: Player, posMs: Long, durMs: Long) {
+    private fun crossfade(player: Player, posMs: Long, durMs: Long) {
         val fadeSec = latestSettings.crossfadeSec
         if (fadeSec <= 0 || durMs <= 8_000L || !player.hasNextMediaItem()) {
             if (player.volume != 1f) player.volume = 1f
@@ -205,8 +204,17 @@ class AudioPilot(
         }
     }
 
-    fun audioplay(track: Track, contextTitle: String = track.title) {
-        playtracks(listOf(track), startIndex = 0, title = contextTitle, fetchRadio = true)
+    fun audioplay(
+        track: Track,
+        contextTitle: String = track.title,
+        fetchRadio: Boolean = false,
+    ) {
+        playtracks(
+            tracks = listOf(track),
+            startIndex = 0,
+            title = contextTitle,
+            fetchRadio = fetchRadio,
+        )
     }
 
     fun playtracks(
@@ -214,13 +222,14 @@ class AudioPilot(
         startIndex: Int = 0,
         title: String = "Queue",
         shuffleStart: Boolean = false,
-        fetchRadio: Boolean = tracks.size == 1,
+        fetchRadio: Boolean = false,
     ) {
         if (tracks.isEmpty()) return
+        radioJob?.cancel()
         val safeIndex = startIndex.coerceIn(0, tracks.lastIndex)
         book.register(tracks)
         book.setcontext(title = title, nextToken = null, seedId = tracks[safeIndex].id)
-        val items = tracks.map(book::tomediaitem)
+        val items = tracks.map(book::mediaitem)
 
         withplayer { p ->
             p.shuffleModeEnabled = shuffleStart
@@ -235,8 +244,8 @@ class AudioPilot(
         activeLoggedTrackId = current.id
         refreshlyrics(current, force = false)
 
-        if (fetchRadio) {
-            loadradiotail(current.id)
+        if (fetchRadio || latestSettings.autoRadio) {
+            loadradio(current.id, force = fetchRadio)
         }
         persistqueue()
     }
@@ -245,7 +254,7 @@ class AudioPilot(
         book.register(track)
         withplayer { p ->
             val insertAt = if (p.mediaItemCount == 0) 0 else (p.currentMediaItemIndex + 1).coerceAtMost(p.mediaItemCount)
-            p.addMediaItem(insertAt, book.tomediaitem(track))
+            p.addMediaItem(insertAt, book.mediaitem(track))
             if (p.mediaItemCount == 1) {
                 p.prepare()
                 p.play()
@@ -258,7 +267,7 @@ class AudioPilot(
     fun enqueue(track: Track) {
         book.register(track)
         withplayer { p ->
-            p.addMediaItem(book.tomediaitem(track))
+            p.addMediaItem(book.mediaitem(track))
             if (p.mediaItemCount == 1) {
                 p.prepare()
                 p.play()
@@ -272,7 +281,7 @@ class AudioPilot(
         if (tracks.isEmpty()) return
         book.register(tracks)
         withplayer { p ->
-            p.addMediaItems(tracks.map(book::tomediaitem))
+            p.addMediaItems(tracks.map(book::mediaitem))
             syncstate(p)
             persistqueue()
         }
@@ -308,7 +317,25 @@ class AudioPilot(
         }
     }
 
+    fun clearupcoming() {
+        radioJob?.cancel()
+        book.continuation = null
+        withplayer { p ->
+            val cur = p.currentMediaItemIndex
+            if (cur >= 0 && cur + 1 < p.mediaItemCount) {
+                p.removeMediaItems(cur + 1, p.mediaItemCount)
+            }
+            if (cur > 0) {
+                p.removeMediaItems(0, cur)
+            }
+            syncstate(p)
+            persistqueue()
+        }
+    }
+
     fun clearqueue() {
+        radioJob?.cancel()
+        book.continuation = null
         withplayer { p ->
             p.stop()
             p.clearMediaItems()
@@ -432,11 +459,13 @@ class AudioPilot(
         )
     }
 
-    private fun loadradiotail(videoId: String) {
+    private fun loadradio(videoId: String, force: Boolean = false) {
         radioJob?.cancel()
         radioJob = scope.launch(Dispatchers.IO) {
-            val prefs = store.settings.first()
-            if (!prefs.autoQueue) return@launch
+            if (!force) {
+                val prefs = store.settings.first()
+                if (!prefs.autoRadio) return@launch
+            }
             val bundle = tube.loadnext(videoId = videoId).getOrNull() ?: return@launch
             book.continuation = bundle.continuation
             val extras = bundle.tracks.filter { it.id != videoId }
@@ -447,7 +476,7 @@ class AudioPilot(
                 val fresh = extras.filterNot { it.id in existingIds }
                 if (fresh.isNotEmpty()) {
                     book.register(fresh)
-                    p.addMediaItems(fresh.map(book::tomediaitem))
+                    p.addMediaItems(fresh.map(book::mediaitem))
                     syncstate(p)
                     persistqueue()
                 }
@@ -455,7 +484,7 @@ class AudioPilot(
         }
     }
 
-    private fun maybeautofill() {
+    private fun autofill() {
         val p = activeplayer() ?: return
         val remaining = p.mediaItemCount - p.currentMediaItemIndex - 1
         if (remaining > 3) return
@@ -463,7 +492,7 @@ class AudioPilot(
         val curId = stateFlow.value.current?.id ?: return
         scope.launch(Dispatchers.IO) {
             val prefs = store.settings.first()
-            if (!prefs.autoQueue) return@launch
+            if (!prefs.autoRadio) return@launch
             val bundle = if (!cont.isNullOrBlank()) {
                 tube.loadnext(continuation = cont).getOrNull()
             } else {
@@ -476,7 +505,7 @@ class AudioPilot(
                 val fresh = bundle.tracks.filterNot { it.id in ids }
                 if (fresh.isNotEmpty()) {
                     book.register(fresh)
-                    active.addMediaItems(fresh.map(book::tomediaitem))
+                    active.addMediaItems(fresh.map(book::mediaitem))
                     syncstate(active)
                 }
             }
@@ -492,7 +521,8 @@ class AudioPilot(
                 ?: Track(
                     id = mi.mediaId,
                     title = mi.mediaMetadata.title?.toString() ?: "Track",
-                    artwork = mi.mediaMetadata.artworkUri?.toString().orEmpty(),
+                    artwork = upscaleart(mi.mediaMetadata.artworkUri?.toString().orEmpty())
+                        .ifBlank { "https://i.ytimg.com/vi/${mi.mediaId}/hqdefault.jpg" },
                 )
         }
         val curIndex = player.currentMediaItemIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))
@@ -530,12 +560,7 @@ class AudioPilot(
             }
             val now = System.currentTimeMillis()
             dao.recordplay(id, playedMs, now)
-            dao.addplayevent(PlayEventEntity(trackId = id, timestamp = now, playTimeMs = playedMs))
-
-            val session = store.session.first()
-            if (session.scrobbleEnabled && session.lastFmSession.isNotBlank() && track != null) {
-                scrobbler.scrobbletrack(track, session.lastFmSession, started / 1_000L)
-            }
+            dao.addevent(PlayEventEntity(trackId = id, timestamp = now, playTimeMs = playedMs))
         }
     }
 
@@ -576,7 +601,7 @@ class AudioPilot(
         scope.launch(Dispatchers.Main) {
             withplayer { p ->
                 if (p.mediaItemCount == 0) {
-                    p.setMediaItems(tracks.map(book::tomediaitem), startIdx, 0L)
+                    p.setMediaItems(tracks.map(book::mediaitem), startIdx, 0L)
                     p.prepare()
                     syncstate(p)
                     refreshlyrics(tracks[startIdx], force = false)

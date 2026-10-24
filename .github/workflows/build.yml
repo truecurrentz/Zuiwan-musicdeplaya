@@ -58,9 +58,6 @@ jobs:
           fi
 
       - name: Build Debug and Release APKs
-        env:
-          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
-          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
         run: |
           set +e
           ./gradlew --console=plain assembleDebug assembleRelease 2>&1 | tee build.log

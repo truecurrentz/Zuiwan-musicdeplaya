@@ -41,11 +41,11 @@ import zuiwan.model.EqProfile
 import zuiwan.model.FilterKind
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.GlassBox
-import zuiwan.ui.GlassChip
-import zuiwan.ui.GlassTopBar
-import zuiwan.ui.ScrollHeaderHost
-import zuiwan.ui.rememberheaderscroll
+import zuiwan.ui.glass
+import zuiwan.ui.chip
+import zuiwan.ui.topbar
+import zuiwan.ui.scrollhost
+import zuiwan.ui.headerscroll
 import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.pow
@@ -133,10 +133,10 @@ fun viewequalizer(
     bottomPadding: PaddingValues,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val profile by hub.eq.collectAsState()
 
-    val headerScroll = rememberheaderscroll()
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
     val lifted by remember {
         derivedStateOf {
@@ -144,20 +144,20 @@ fun viewequalizer(
         }
     }
 
-    ScrollHeaderHost(
+    scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         header = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                GlassTopBar(title = "Parametric EQ", onBack = onBack) {
+                topbar(title = "Parametric EQ", onBack = onBack) {
                     Switch(
                         checked = profile.enabled,
                         onCheckedChange = { enabled ->
                             hub.pilot.seteq(profile.copy(enabled = enabled))
                         },
                         colors = SwitchDefaults.colors(
-                            checkedThumbColor = glass.onAccent,
-                            checkedTrackColor = glass.accent,
+                            checkedThumbColor = glassTokens.onAccent,
+                            checkedTrackColor = glassTokens.accent,
                         ),
                     )
                 }
@@ -169,7 +169,7 @@ fun viewequalizer(
                         .padding(start = 18.dp, end = 18.dp, bottom = 8.dp),
                 ) {
                     studioPresets.forEach { preset ->
-                        GlassChip(
+                        chip(
                             label = preset.name,
                             selected = profile.id == preset.id,
                             onClick = {
@@ -190,7 +190,7 @@ fun viewequalizer(
             modifier = Modifier.fillMaxSize(),
         ) {
             item(key = "curve") {
-                GlassBox(
+                glass(
                     shape = RoundedCornerShape(22.dp),
                     elevated = true,
                     contentPadding = PaddingValues(16.dp),
@@ -198,12 +198,12 @@ fun viewequalizer(
                         .fillMaxWidth()
                         .padding(horizontal = 18.dp, vertical = 10.dp),
                 ) {
-                    EqResponseCanvas(profile = profile)
+                    eqcanvas(profile = profile)
                 }
             }
 
             item(key = "preamp") {
-                GlassBox(
+                glass(
                     shape = RoundedCornerShape(18.dp),
                     elevated = true,
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
@@ -216,11 +216,11 @@ fun viewequalizer(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text("Preamp Gain", style = MaterialTheme.typography.titleMedium, color = glass.ink)
+                            Text("Preamp Gain", style = MaterialTheme.typography.titleMedium, color = glassTokens.ink)
                             Text(
                                 text = "%+.1f dB".format(profile.preampDb),
                                 style = MaterialTheme.typography.labelLarge,
-                                color = glass.accent,
+                                color = glassTokens.accent,
                             )
                         }
                         Slider(
@@ -231,9 +231,9 @@ fun viewequalizer(
                             },
                             valueRange = -12f..12f,
                             colors = SliderDefaults.colors(
-                                thumbColor = glass.accent,
-                                activeTrackColor = glass.accent,
-                                inactiveTrackColor = glass.glassBorder,
+                                thumbColor = glassTokens.accent,
+                                activeTrackColor = glassTokens.accent,
+                                inactiveTrackColor = glassTokens.glassBorder,
                             ),
                         )
                     }
@@ -246,7 +246,7 @@ fun viewequalizer(
                 } else {
                     "${band.frequency.toInt()} Hz"
                 }
-                GlassBox(
+                glass(
                     shape = RoundedCornerShape(16.dp),
                     elevated = true,
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -259,8 +259,8 @@ fun viewequalizer(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Column(modifier = Modifier.width(64.dp)) {
-                            Text(freqLabel, style = MaterialTheme.typography.titleSmall, color = glass.ink)
-                            Text(band.kind.name, style = MaterialTheme.typography.labelSmall, color = glass.inkMuted)
+                            Text(freqLabel, style = MaterialTheme.typography.titleSmall, color = glassTokens.ink)
+                            Text(band.kind.name, style = MaterialTheme.typography.labelSmall, color = glassTokens.inkMuted)
                         }
                         Slider(
                             value = band.gainDb.toFloat(),
@@ -279,16 +279,16 @@ fun viewequalizer(
                             },
                             valueRange = -12f..12f,
                             colors = SliderDefaults.colors(
-                                thumbColor = glass.accent,
-                                activeTrackColor = glass.accent,
-                                inactiveTrackColor = glass.glassBorder,
+                                thumbColor = glassTokens.accent,
+                                activeTrackColor = glassTokens.accent,
+                                inactiveTrackColor = glassTokens.glassBorder,
                             ),
                             modifier = Modifier.weight(1f),
                         )
                         Text(
                             text = "%+.1f".format(band.gainDb),
                             style = MaterialTheme.typography.labelLarge,
-                            color = if (band.gainDb != 0.0) glass.accent else glass.inkSecondary,
+                            color = if (band.gainDb != 0.0) glassTokens.accent else glassTokens.inkSecondary,
                             modifier = Modifier.width(46.dp).padding(start = 6.dp),
                         )
                     }
@@ -299,8 +299,8 @@ fun viewequalizer(
 }
 
 @Composable
-private fun EqResponseCanvas(profile: EqProfile) {
-    val glass = LocalGlass.current
+private fun eqcanvas(profile: EqProfile) {
+    val glassTokens = LocalGlass.current
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
@@ -308,7 +308,7 @@ private fun EqResponseCanvas(profile: EqProfile) {
     ) {
         val midY = size.height / 2f
         drawLine(
-            color = glass.glassBorder,
+            color = glassTokens.glassBorder,
             start = Offset(0f, midY),
             end = Offset(size.width, midY),
             strokeWidth = 1.dp.toPx(),
@@ -353,12 +353,12 @@ private fun EqResponseCanvas(profile: EqProfile) {
         drawPath(
             path = fillPath,
             brush = Brush.verticalGradient(
-                colors = listOf(glass.accent.copy(alpha = 0.28f), Color.Transparent),
+                colors = listOf(glassTokens.accent.copy(alpha = 0.28f), Color.Transparent),
             ),
         )
         drawPath(
             path = linePath,
-            color = glass.accent,
+            color = glassTokens.accent,
             style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round),
         )
     }

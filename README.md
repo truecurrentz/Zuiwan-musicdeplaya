@@ -59,7 +59,7 @@
 - iOS-inspired Frosted Glass interface with **Dark** and **White** themes
 - Real-time GPU backdrop blur on connected floating bars and immersive full-bleed player
 - Pure geometric vector icon suite across every screen and sheet
-- Local playlists, `.m3u` import/export, YouTube Music cloud sync, Last.fm scrobbling & `.zip` backup/restore
+- Local playlists, `.m3u` import/export, YouTube Music cloud sync & `.zip` backup/restore
 
 </td>
   </tr>

@@ -20,13 +20,13 @@ import androidx.compose.ui.unit.dp
 import zuiwan.model.Track
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.GlassBox
-import zuiwan.ui.GlassIconButton
-import zuiwan.ui.GlassTopBar
-import zuiwan.ui.ScrollHeaderHost
-import zuiwan.ui.SongRow
+import zuiwan.ui.glass
+import zuiwan.ui.iconbtn
+import zuiwan.ui.topbar
+import zuiwan.ui.scrollhost
+import zuiwan.ui.songrow
 import zuiwan.ui.ZIcons
-import zuiwan.ui.rememberheaderscroll
+import zuiwan.ui.headerscroll
 
 @Composable
 fun viewhistory(
@@ -35,11 +35,11 @@ fun viewhistory(
     bottomPadding: PaddingValues,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val history by hub.historyTracks.collectAsState()
     val playback by hub.pilot.state.collectAsState()
 
-    val headerScroll = rememberheaderscroll()
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
     val lifted by remember {
         derivedStateOf {
@@ -47,17 +47,17 @@ fun viewhistory(
         }
     }
 
-    ScrollHeaderHost(
+    scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         header = {
-            GlassTopBar(title = "History", onBack = onBack) {
+            topbar(title = "History", onBack = onBack) {
                 if (history.isNotEmpty()) {
-                    GlassIconButton(
+                    iconbtn(
                         icon = ZIcons.Play,
                         onClick = { hub.pilot.playtracks(history, 0, "Listening History") },
                     )
-                    GlassIconButton(
+                    iconbtn(
                         icon = ZIcons.Trash,
                         onClick = { hub.clearhistory() },
                     )
@@ -75,7 +75,7 @@ fun viewhistory(
         ) {
             if (history.isEmpty()) {
                 item(key = "empty") {
-                    GlassBox(
+                    glass(
                         shape = RoundedCornerShape(20.dp),
                         elevated = true,
                         contentPadding = PaddingValues(20.dp),
@@ -86,13 +86,13 @@ fun viewhistory(
                         Text(
                             text = "Songs you play for at least 15 seconds appear here.",
                             style = MaterialTheme.typography.bodyLarge,
-                            color = glass.inkSecondary,
+                            color = glassTokens.inkSecondary,
                         )
                     }
                 }
             } else {
                 items(history, key = { it.id }) { song ->
-                    SongRow(
+                    songrow(
                         track = song,
                         playing = playback.current?.id == song.id,
                         onClick = {

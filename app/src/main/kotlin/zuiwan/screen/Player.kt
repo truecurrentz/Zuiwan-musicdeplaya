@@ -32,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -68,17 +69,18 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import zuiwan.model.Track
 import zuiwan.model.artistline
+import zuiwan.model.fallbackart
 import zuiwan.model.formatclock
-import zuiwan.model.upscaleart
-import zuiwan.sheet.QueueView
-import zuiwan.sheet.SleepSheet
-import zuiwan.sheet.TempoSheet
+import zuiwan.model.trackart
+import zuiwan.sheet.queueview
+import zuiwan.sheet.sleepsheet
+import zuiwan.sheet.temposheet
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.ArtImage
-import zuiwan.ui.GlassIconButton
+import zuiwan.ui.artimage
+import zuiwan.ui.iconbtn
 import zuiwan.ui.Route
-import zuiwan.ui.ThinSlider
+import zuiwan.ui.thinslider
 import zuiwan.ui.ZIcons
 import kotlin.math.roundToInt
 
@@ -95,7 +97,7 @@ fun viewplayer(
     onTrackMenu: (Track) -> Unit,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val context = LocalContext.current
 
     val state by hub.pilot.state.collectAsState()
@@ -105,7 +107,8 @@ fun viewplayer(
 
     val track = state.current ?: return
     val isLiked = track.id in likedIds
-    val hiResArt = remember(track.artwork) { upscaleart(track.artwork, 1080) }
+    val hiResArt = remember(track.id, track.artwork) { track.trackart(1080) }
+    val backupArt = remember(track.id) { track.fallbackart() }
 
     val audioManager = remember(context) {
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -132,8 +135,8 @@ fun viewplayer(
         }
     }
 
-    if (showSleep) SleepSheet(onDismiss = { showSleep = false })
-    if (showTempo) TempoSheet(onDismiss = { showTempo = false })
+    if (showSleep) sleepsheet(onDismiss = { showSleep = false })
+    if (showTempo) temposheet(onDismiss = { showTempo = false })
 
     val progress = if (state.durationMs > 0L) {
         (state.positionMs.toFloat() / state.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -145,17 +148,18 @@ fun viewplayer(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(glass.bg),
+            .background(glassTokens.bg),
     ) {
         val stageHeight = maxHeight * 0.62f
 
-        ImmersiveGlassBackdrop(
+        playerbg(
             artworkUrl = hiResArt,
+            fallbackUrl = backupArt,
             stageHeight = stageHeight,
             fullBleedTop = pane == PlayerPane.COVER,
-            blurEnabled = glass.blurEnabled,
-            isDark = glass.isDark,
-            baseBg = glass.bg,
+            blurEnabled = glassTokens.blurEnabled,
+            isDark = glassTokens.isDark,
+            baseBg = glassTokens.bg,
         )
 
         AnimatedContent(
@@ -176,8 +180,9 @@ fun viewplayer(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            ArtImage(
-                                url = track.artwork,
+                            artimage(
+                                url = track.trackart(360),
+                                fallbackUrl = backupArt,
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.size(50.dp),
                             )
@@ -187,31 +192,31 @@ fun viewplayer(
                                     text = track.title,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = glass.ink,
+                                    color = glassTokens.ink,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
                                     text = track.artistline(),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = glass.inkSecondary,
+                                    color = glassTokens.inkSecondary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.Search,
                                 onClick = { showLyricSearch = true },
                                 size = 38.dp,
                                 iconSize = 19.dp,
                             )
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.MoreHoriz,
                                 onClick = { onTrackMenu(track) },
                                 size = 38.dp,
                                 iconSize = 19.dp,
                             )
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.Close,
                                 onClick = { pane = PlayerPane.COVER },
                                 size = 38.dp,
@@ -232,15 +237,15 @@ fun viewplayer(
 
                         Spacer(Modifier.height(10.dp))
 
-                        ThinSlider(
+                        thinslider(
                             progress = progress,
                             onSeek = { frac ->
                                 if (state.durationMs > 0L) {
                                     hub.pilot.seekto((frac * state.durationMs).toLong())
                                 }
                             },
-                            activeColor = glass.ink,
-                            trackColor = glass.inkMuted.copy(alpha = 0.30f),
+                            activeColor = glassTokens.ink,
+                            trackColor = glassTokens.inkMuted.copy(alpha = 0.30f),
                         )
                         Row(
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -249,21 +254,21 @@ fun viewplayer(
                             Text(
                                 text = formatclock(state.positionMs),
                                 style = MaterialTheme.typography.labelMedium,
-                                color = glass.inkSecondary,
+                                color = glassTokens.inkSecondary,
                             )
                             Text(
                                 text = "-${formatclock(remainingMs)}",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = glass.inkSecondary,
+                                color = glassTokens.inkSecondary,
                             )
                         }
 
                         Spacer(Modifier.height(6.dp))
 
-                        AppleTransportRow(
+                        transport(
                             playing = state.playing,
                             buffering = state.buffering,
-                            tint = glass.ink,
+                            tint = glassTokens.ink,
                             compact = true,
                             onPrev = { hub.pilot.skipprev() },
                             onToggle = { hub.pilot.toggleplay() },
@@ -272,7 +277,7 @@ fun viewplayer(
 
                         Spacer(Modifier.height(6.dp))
 
-                        PlayerBottomBar(
+                        playerbar(
                             pane = activePane,
                             shuffle = state.shuffle,
                             repeatMode = state.repeatMode,
@@ -307,8 +312,9 @@ fun viewplayer(
                                 .fillMaxWidth()
                                 .padding(horizontal = 4.dp),
                         ) {
-                            ArtImage(
-                                url = track.artwork,
+                            artimage(
+                                url = track.trackart(360),
+                                fallbackUrl = backupArt,
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.size(50.dp),
                             )
@@ -322,25 +328,25 @@ fun viewplayer(
                                     text = track.title,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = glass.ink,
+                                    color = glassTokens.ink,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
                                     text = track.artistline(),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = glass.inkSecondary,
+                                    color = glassTokens.inkSecondary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            GlassIconButton(
+                            iconbtn(
                                 icon = if (state.playing) ZIcons.Pause else ZIcons.Play,
                                 onClick = { hub.pilot.toggleplay() },
                                 size = 40.dp,
                                 iconSize = 22.dp,
                             )
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.ChevronDown,
                                 onClick = { pane = PlayerPane.COVER },
                                 size = 40.dp,
@@ -350,7 +356,7 @@ fun viewplayer(
 
                         Spacer(Modifier.height(10.dp))
 
-                        QueueView(
+                        queueview(
                             onClose = { pane = PlayerPane.COVER },
                             onTrackMenu = onTrackMenu,
                             modifier = Modifier
@@ -360,7 +366,7 @@ fun viewplayer(
 
                         Spacer(Modifier.height(8.dp))
 
-                        PlayerBottomBar(
+                        playerbar(
                             pane = activePane,
                             shuffle = state.shuffle,
                             repeatMode = state.repeatMode,
@@ -394,7 +400,7 @@ fun viewplayer(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.ChevronDown,
                                 onClick = onCollapse,
                                 size = 40.dp,
@@ -403,7 +409,7 @@ fun viewplayer(
                             Text(
                                 text = "Playing from ${state.queueTitle}",
                                 style = MaterialTheme.typography.titleSmall,
-                                color = if (glass.isDark) Color.White.copy(alpha = 0.88f) else glass.ink,
+                                color = if (glassTokens.isDark) Color.White.copy(alpha = 0.88f) else glassTokens.ink,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier
@@ -411,7 +417,7 @@ fun viewplayer(
                                     .padding(horizontal = 12.dp),
                                 textAlign = TextAlign.Center,
                             )
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.MoreHoriz,
                                 onClick = { onTrackMenu(track) },
                                 size = 40.dp,
@@ -431,7 +437,7 @@ fun viewplayer(
                                     fontSize = 26.sp,
                                     lineHeight = 31.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = glass.ink,
+                                    color = glassTokens.ink,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier
@@ -449,7 +455,7 @@ fun viewplayer(
                                     fontSize = 18.sp,
                                     lineHeight = 22.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = glass.inkSecondary,
+                                    color = glassTokens.inkSecondary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier
@@ -463,14 +469,14 @@ fun viewplayer(
                                 )
                             }
                             Spacer(Modifier.width(8.dp))
-                            GlassIconButton(
+                            iconbtn(
                                 icon = if (isLiked) ZIcons.HeartFilled else ZIcons.Heart,
                                 active = isLiked,
                                 onClick = { hub.togglelike(track) },
                                 size = 42.dp,
                                 iconSize = 22.dp,
                             )
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.MoreHoriz,
                                 onClick = { onTrackMenu(track) },
                                 size = 42.dp,
@@ -480,15 +486,15 @@ fun viewplayer(
 
                         Spacer(Modifier.height(18.dp))
 
-                        ThinSlider(
+                        thinslider(
                             progress = progress,
                             onSeek = { frac ->
                                 if (state.durationMs > 0L) {
                                     hub.pilot.seekto((frac * state.durationMs).toLong())
                                 }
                             },
-                            activeColor = glass.ink,
-                            trackColor = glass.inkMuted.copy(alpha = 0.30f),
+                            activeColor = glassTokens.ink,
+                            trackColor = glassTokens.inkMuted.copy(alpha = 0.30f),
                         )
                         Row(
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -498,21 +504,21 @@ fun viewplayer(
                             Text(
                                 text = formatclock(state.positionMs),
                                 style = MaterialTheme.typography.labelMedium,
-                                color = glass.inkSecondary,
+                                color = glassTokens.inkSecondary,
                             )
                             Text(
                                 text = "-${formatclock(remainingMs)}",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = glass.inkSecondary,
+                                color = glassTokens.inkSecondary,
                             )
                         }
 
                         Spacer(Modifier.height(22.dp))
 
-                        AppleTransportRow(
+                        transport(
                             playing = state.playing,
                             buffering = state.buffering,
-                            tint = glass.ink,
+                            tint = glassTokens.ink,
                             compact = false,
                             onPrev = { hub.pilot.skipprev() },
                             onToggle = { hub.pilot.toggleplay() },
@@ -521,10 +527,10 @@ fun viewplayer(
 
                         Spacer(Modifier.height(22.dp))
 
-                        VolumeBarRow(
+                        volumebar(
                             volume = volumeFrac,
-                            tint = glass.ink,
-                            mutedTint = glass.inkSecondary,
+                            tint = glassTokens.ink,
+                            mutedTint = glassTokens.inkSecondary,
                             onVolumeChange = { next ->
                                 volumeFrac = next
                                 val target = (next * maxVol).roundToInt().coerceIn(0, maxVol)
@@ -534,7 +540,7 @@ fun viewplayer(
 
                         Spacer(Modifier.height(18.dp))
 
-                        PlayerBottomBar(
+                        playerbar(
                             pane = activePane,
                             shuffle = state.shuffle,
                             repeatMode = state.repeatMode,
@@ -560,7 +566,7 @@ fun viewplayer(
 }
 
 @Composable
-private fun PlayerBottomBar(
+private fun playerbar(
     pane: PlayerPane,
     shuffle: Boolean,
     repeatMode: Int,
@@ -575,16 +581,16 @@ private fun PlayerBottomBar(
     onOpenSleep: () -> Unit,
     onOpenTempo: () -> Unit,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        GlassIconButton(
+        iconbtn(
             icon = ZIcons.Lyrics,
             active = pane == PlayerPane.LYRICS,
-            tint = if (pane == PlayerPane.LYRICS) glass.accent else glass.inkSecondary,
+            tint = if (pane == PlayerPane.LYRICS) glassTokens.accent else glassTokens.inkSecondary,
             onClick = onToggleLyrics,
             size = 42.dp,
             iconSize = 23.dp,
@@ -595,40 +601,40 @@ private fun PlayerBottomBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier
                 .clip(RoundedCornerShape(999.dp))
-                .background(glass.glassElevated)
+                .background(glassTokens.glassElevated)
                 .padding(horizontal = 10.dp, vertical = 5.dp),
         ) {
-            CapsuleActionIcon(
+            baricon(
                 icon = ZIcons.Shuffle,
                 active = shuffle,
                 onClick = onToggleShuffle,
             )
-            CapsuleActionIcon(
+            baricon(
                 icon = if (repeatMode == Player.REPEAT_MODE_ONE) ZIcons.RepeatOne else ZIcons.Repeat,
                 active = repeatMode != Player.REPEAT_MODE_OFF,
                 onClick = onCycleRepeat,
             )
-            CapsuleActionIcon(
+            baricon(
                 icon = ZIcons.Equalizer,
                 active = eqEnabled,
                 onClick = onOpenEq,
             )
-            CapsuleActionIcon(
+            baricon(
                 icon = ZIcons.Timer,
                 active = sleepActive,
                 onClick = onOpenSleep,
             )
-            CapsuleActionIcon(
+            baricon(
                 icon = ZIcons.Speed,
                 active = tempoActive,
                 onClick = onOpenTempo,
             )
         }
 
-        GlassIconButton(
+        iconbtn(
             icon = ZIcons.Queue,
             active = pane == PlayerPane.QUEUE,
-            tint = if (pane == PlayerPane.QUEUE) glass.accent else glass.inkSecondary,
+            tint = if (pane == PlayerPane.QUEUE) glassTokens.accent else glassTokens.inkSecondary,
             onClick = onToggleQueue,
             size = 42.dp,
             iconSize = 23.dp,
@@ -637,8 +643,9 @@ private fun PlayerBottomBar(
 }
 
 @Composable
-private fun ImmersiveGlassBackdrop(
+private fun playerbg(
     artworkUrl: String?,
+    fallbackUrl: String?,
     stageHeight: Dp,
     fullBleedTop: Boolean,
     blurEnabled: Boolean,
@@ -646,6 +653,15 @@ private fun ImmersiveGlassBackdrop(
     baseBg: Color,
 ) {
     val hazeState = rememberHazeState()
+    var activeArt by remember(artworkUrl, fallbackUrl) {
+        mutableStateOf(artworkUrl.orEmpty().ifBlank { fallbackUrl.orEmpty() })
+    }
+    var triedFallback by remember(artworkUrl, fallbackUrl) { mutableStateOf(false) }
+
+    LaunchedEffect(artworkUrl, fallbackUrl) {
+        activeArt = artworkUrl.orEmpty().ifBlank { fallbackUrl.orEmpty() }
+        triedFallback = false
+    }
     val blurStyle = remember(blurEnabled, isDark, baseBg) {
         HazeBlurStyle {
             blurEnabled(blurEnabled)
@@ -689,11 +705,18 @@ private fun ImmersiveGlassBackdrop(
                 .clipToBounds()
                 .hazeSource(hazeState),
         ) {
-            if (!artworkUrl.isNullOrBlank()) {
+            if (activeArt.isNotBlank()) {
                 AsyncImage(
-                    model = artworkUrl,
+                    model = activeArt,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
+                    onError = {
+                        val alt = fallbackUrl.orEmpty()
+                        if (!triedFallback && alt.isNotBlank() && alt != activeArt) {
+                            triedFallback = true
+                            activeArt = alt
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
@@ -723,7 +746,7 @@ private fun ImmersiveGlassBackdrop(
                 .background(lowerScrim),
         )
 
-        if (fullBleedTop && !artworkUrl.isNullOrBlank()) {
+        if (fullBleedTop && activeArt.isNotBlank()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -741,9 +764,16 @@ private fun ImmersiveGlassBackdrop(
                     },
             ) {
                 AsyncImage(
-                    model = artworkUrl,
+                    model = activeArt,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
+                    onError = {
+                        val alt = fallbackUrl.orEmpty()
+                        if (!triedFallback && alt.isNotBlank() && alt != activeArt) {
+                            triedFallback = true
+                            activeArt = alt
+                        }
+                    },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -752,7 +782,7 @@ private fun ImmersiveGlassBackdrop(
 }
 
 @Composable
-private fun AppleTransportRow(
+private fun transport(
     playing: Boolean,
     buffering: Boolean,
     tint: Color,
@@ -818,7 +848,7 @@ private fun AppleTransportRow(
 }
 
 @Composable
-private fun VolumeBarRow(
+private fun volumebar(
     volume: Float,
     tint: Color,
     mutedTint: Color,
@@ -835,7 +865,7 @@ private fun VolumeBarRow(
             tint = mutedTint,
             modifier = Modifier.size(18.dp),
         )
-        ThinSlider(
+        thinslider(
             progress = volume,
             onSeek = onVolumeChange,
             activeColor = tint,
@@ -854,24 +884,24 @@ private fun VolumeBarRow(
 }
 
 @Composable
-private fun CapsuleActionIcon(
+private fun baricon(
     icon: ImageVector,
     active: Boolean,
     onClick: () -> Unit,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(36.dp)
             .clip(CircleShape)
-            .background(if (active) glass.accentSoft else Color.Transparent)
+            .background(if (active) glassTokens.accentSoft else Color.Transparent)
             .clickable(onClick = onClick),
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (active) glass.accent else glass.inkSecondary,
+            tint = if (active) glassTokens.accent else glassTokens.inkSecondary,
             modifier = Modifier.size(18.dp),
         )
     }

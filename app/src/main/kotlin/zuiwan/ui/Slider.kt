@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import zuiwan.theme.LocalGlass
 
 @Composable
-fun ThinSlider(
+fun thinslider(
     progress: Float,
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier,
@@ -33,7 +33,7 @@ fun ThinSlider(
     idleThickness: Dp = 6.dp,
     activeThickness: Dp = 11.dp,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(progress) }
     val value = (if (dragging) dragValue else progress).coerceIn(0f, 1f)
@@ -44,8 +44,8 @@ fun ThinSlider(
         label = "barThickness",
     )
 
-    val fill = activeColor ?: glass.ink
-    val rail = trackColor ?: glass.inkMuted.copy(alpha = 0.28f)
+    val fill = activeColor ?: glassTokens.ink
+    val rail = trackColor ?: glassTokens.inkMuted.copy(alpha = 0.28f)
 
     Canvas(
         modifier = modifier
@@ -101,18 +101,18 @@ fun ThinSlider(
 }
 
 @Composable
-fun WaveSlider(
+fun waveslider(
     progress: Float,
     playing: Boolean,
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val glass = LocalGlass.current
-    ThinSlider(
+    val glassTokens = LocalGlass.current
+    thinslider(
         progress = progress,
         onSeek = onSeek,
-        activeColor = glass.accent,
-        trackColor = glass.inkMuted.copy(alpha = 0.25f),
+        activeColor = glassTokens.accent,
+        trackColor = glassTokens.inkMuted.copy(alpha = 0.25f),
         modifier = modifier,
     )
 }

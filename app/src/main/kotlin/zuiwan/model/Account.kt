@@ -20,9 +20,6 @@ data class SessionData(
     val accountHandle: String = "",
     val accountEmail: String = "",
     val accountAvatar: String = "",
-    val lastFmUser: String = "",
-    val lastFmSession: String = "",
-    val scrobbleEnabled: Boolean = false,
 ) {
     val active: Boolean
         get() = cookie.contains("SAPISID")

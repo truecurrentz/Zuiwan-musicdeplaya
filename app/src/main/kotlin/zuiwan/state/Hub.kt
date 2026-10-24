@@ -34,6 +34,7 @@ import zuiwan.dsp.EqualizerProcessor
 import zuiwan.dsp.NormalizerProcessor
 import zuiwan.lyrics.LyricsExtractor
 import zuiwan.model.AlbumSummary
+import zuiwan.model.ArtistRef
 import zuiwan.model.ArtistStat
 import zuiwan.model.ArtistSummary
 import zuiwan.model.EqProfile
@@ -47,7 +48,8 @@ import zuiwan.model.StatsSummary
 import zuiwan.model.StatsWindow
 import zuiwan.model.Track
 import zuiwan.model.TrackStat
-import zuiwan.tube.ScrobbleClient
+import zuiwan.model.trackart
+import zuiwan.model.upscaleart
 import zuiwan.tube.StreamEngine
 import zuiwan.tube.TubeClient
 import java.util.UUID
@@ -64,7 +66,6 @@ class Hub(val appContext: Context) {
     val backup: BackupManager = BackupManager(appContext, db)
 
     val tube: TubeClient = TubeClient()
-    val scrobbler: ScrobbleClient = ScrobbleClient(tube.http)
     val streams: StreamEngine = StreamEngine(appContext) { tube.innerTube }
     val lyrics: LyricsExtractor = LyricsExtractor(dao, tube)
 
@@ -101,7 +102,6 @@ class Hub(val appContext: Context) {
         dao = dao,
         store = store,
         tube = tube,
-        scrobbler = scrobbler,
         lyricsExtractor = lyrics,
         equalizer = equalizer,
         vault = vault,
@@ -127,7 +127,7 @@ class Hub(val appContext: Context) {
         .map { rows -> rows.map { it.totrack() } }
         .stateIn(scope, SharingStarted.Lazily, emptyList())
 
-    val topTracks: StateFlow<List<Track>> = dao.mostplayedtracks()
+    val topTracks: StateFlow<List<Track>> = dao.mostplayed()
         .map { rows -> rows.map { it.totrack() } }
         .stateIn(scope, SharingStarted.Lazily, emptyList())
 
@@ -141,15 +141,17 @@ class Hub(val appContext: Context) {
 
     val playlists: StateFlow<List<PlaylistSummary>> = combine(
         dao.allplaylists(),
-        dao.totalplaylistlinks(),
+        dao.linkcount(),
     ) { rows, _ ->
         rows.map { row ->
-            val tracks = dao.playlisttracks(row.id)
+            val tracks = dao.playlisttracks(row.id).map { it.totrack() }
+            val fixedRowArt = upscaleart(row.artwork)
             val thumbs = buildList {
-                if (row.artwork.isNotBlank()) add(row.artwork)
+                if (fixedRowArt.isNotBlank()) add(fixedRowArt)
                 tracks.forEach { t ->
-                    if (t.artwork.isNotBlank() && t.artwork !in this && size < 4) {
-                        add(t.artwork)
+                    val art = t.trackart()
+                    if (art.isNotBlank() && art !in this && size < 4) {
+                        add(art)
                     }
                 }
             }
@@ -163,7 +165,7 @@ class Hub(val appContext: Context) {
                 title = row.title,
                 author = row.author ?: if (row.local) "You" else "YouTube Music",
                 countText = countLabel,
-                artwork = row.artwork.ifBlank { thumbs.firstOrNull().orEmpty() },
+                artwork = fixedRowArt.ifBlank { thumbs.firstOrNull().orEmpty() },
                 local = row.local,
                 remoteId = row.remoteId,
                 editable = row.editable,
@@ -272,14 +274,14 @@ class Hub(val appContext: Context) {
         }
     }
 
-    fun togglesavealbum(album: AlbumSummary) {
+    fun savealbum(album: AlbumSummary) {
         scope.launch {
             val saved = savedAlbums.value.any { it.id == album.id }
             dao.putalbum(album.copy(saved = !saved).toentity(savedOverride = !saved))
         }
     }
 
-    fun togglesaveartist(artist: ArtistSummary) {
+    fun saveartist(artist: ArtistSummary) {
         scope.launch {
             val saved = savedArtists.value.any { it.id == artist.id }
             val next = !saved
@@ -288,11 +290,11 @@ class Hub(val appContext: Context) {
         }
     }
 
-    fun togglesaveplaylist(playlist: PlaylistSummary) {
+    fun saveplaylist(playlist: PlaylistSummary) {
         scope.launch {
             val existing = dao.getplaylist(playlist.id)
             if (existing != null) {
-                dao.clearplaylisttracks(playlist.id)
+                dao.unlinkall(playlist.id)
                 dao.deleteplaylist(playlist.id)
             } else {
                 dao.putplaylist(
@@ -300,7 +302,7 @@ class Hub(val appContext: Context) {
                         id = playlist.id,
                         title = playlist.title,
                         author = playlist.author ?: "YouTube Music",
-                        artwork = playlist.artwork,
+                        artwork = upscaleart(playlist.artwork),
                         local = false,
                         remoteId = playlist.id,
                         editable = false,
@@ -340,18 +342,18 @@ class Hub(val appContext: Context) {
 
     fun deleteplaylist(id: String) {
         scope.launch {
-            dao.clearplaylisttracks(id)
+            dao.unlinkall(id)
             dao.deleteplaylist(id)
         }
     }
 
-    fun addtoplaylist(playlistId: String, track: Track) {
+    fun addtrack(playlistId: String, track: Track) {
         scope.launch {
             if (dao.gettrack(track.id) == null) {
                 dao.puttrack(track.toentity())
             }
-            val pos = (dao.maxplaylistpos(playlistId) ?: -1) + 1
-            dao.putplaylisttrack(
+            val pos = (dao.maxpos(playlistId) ?: -1) + 1
+            dao.linktrack(
                 PlaylistTrackEntity(
                     playlistId = playlistId,
                     trackId = track.id,
@@ -359,23 +361,24 @@ class Hub(val appContext: Context) {
                 ),
             )
             val pl = dao.getplaylist(playlistId)
-            if (pl != null && pl.artwork.isBlank() && track.artwork.isNotBlank()) {
-                dao.putplaylist(pl.copy(artwork = track.artwork))
+            val art = track.trackart()
+            if (pl != null && pl.artwork.isBlank() && art.isNotBlank()) {
+                dao.putplaylist(pl.copy(artwork = art))
             }
         }
     }
 
-    fun removefromplaylist(playlistId: String, trackId: String) {
+    fun droptrack(playlistId: String, trackId: String) {
         scope.launch {
-            dao.removeplaylisttrack(playlistId, trackId)
+            dao.unlinktrack(playlistId, trackId)
         }
     }
 
     fun reorderplaylist(playlistId: String, orderedTrackIds: List<String>) {
         scope.launch {
-            dao.clearplaylisttracks(playlistId)
+            dao.unlinkall(playlistId)
             orderedTrackIds.forEachIndexed { idx, trackId ->
-                dao.putplaylisttrack(
+                dao.linktrack(
                     PlaylistTrackEntity(
                         playlistId = playlistId,
                         trackId = trackId,
@@ -386,13 +389,14 @@ class Hub(val appContext: Context) {
         }
     }
 
-    suspend fun loadlocalplaylist(playlistId: String): PlaylistDetail? =
+    suspend fun localplaylist(playlistId: String): PlaylistDetail? =
         withContext(Dispatchers.IO) {
             val entity = dao.getplaylist(playlistId) ?: return@withContext null
             val tracks = dao.playlisttracks(playlistId).map { it.totrack() }
-            val thumbs = tracks.mapNotNull { it.artwork.takeIf(String::isNotBlank) }.distinct().take(4)
+            val thumbs = tracks.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4)
             PlaylistDetail(
                 playlist = entity.tosummary(tracks.size).copy(
+                    artwork = upscaleart(entity.artwork).ifBlank { thumbs.firstOrNull().orEmpty() },
                     thumbnails = thumbs,
                     songCount = tracks.size,
                 ),
@@ -400,9 +404,9 @@ class Hub(val appContext: Context) {
             )
         }
 
-    fun exportm3u(playlistId: String, uri: Uri) {
+    fun exportlist(playlistId: String, uri: Uri) {
         scope.launch {
-            val detail = loadlocalplaylist(playlistId) ?: return@launch
+            val detail = localplaylist(playlistId) ?: return@launch
             val body = buildString {
                 appendLine("#EXTM3U")
                 appendLine("#PLAYLIST:${detail.playlist.title}")
@@ -418,7 +422,7 @@ class Hub(val appContext: Context) {
         }
     }
 
-    fun importm3u(uri: Uri) {
+    fun importlist(uri: Uri) {
         scope.launch {
             val lines = appContext.contentResolver.openInputStream(uri)
                 ?.bufferedReader()
@@ -461,12 +465,12 @@ class Hub(val appContext: Context) {
                             id = videoId,
                             title = pendingMeta?.second?.ifBlank { videoId } ?: videoId,
                             artists = pendingMeta?.first?.takeIf { it.isNotBlank() }
-                                ?.let { listOf(zuiwan.model.ArtistRef(null, it)) }
+                                ?.let { listOf(ArtistRef(null, it)) }
                                 .orEmpty(),
                             artwork = "https://i.ytimg.com/vi/$videoId/hqdefault.jpg",
                         )
                         dao.puttrack(resolved.toentity())
-                        dao.putplaylisttrack(PlaylistTrackEntity(id, videoId, pos++))
+                        dao.linktrack(PlaylistTrackEntity(id, videoId, pos++))
                     }
                     pendingMeta = null
                 }
@@ -481,8 +485,8 @@ class Hub(val appContext: Context) {
             } else {
                 0L
             }
-            val totalTime = dao.playtimesince(since) ?: 0L
-            val totalPlays = dao.playcountsince(since)
+            val totalTime = dao.timesince(since) ?: 0L
+            val totalPlays = dao.countsince(since)
             val topTracks = dao.toptracks(since, 15).map { row ->
                 TrackStat(
                     track = row.track.totrack(),
@@ -490,15 +494,17 @@ class Hub(val appContext: Context) {
                     totalTimeMs = row.playTime,
                 )
             }
+            val savedArtistMap = savedArtists.value.associateBy { it.id }
             val artistBuckets = linkedMapOf<String, Triple<ArtistSummary, Int, Long>>()
             topTracks.forEach { stat ->
                 val ref = stat.track.artists.firstOrNull() ?: return@forEach
                 val key = ref.id ?: ref.name
                 val cur = artistBuckets[key]
+                val savedArt = ref.id?.let { savedArtistMap[it]?.artwork }.orEmpty()
                 val summary = cur?.first ?: ArtistSummary(
                     id = ref.id ?: key,
                     name = ref.name,
-                    artwork = stat.track.artwork,
+                    artwork = savedArt.ifBlank { stat.track.trackart() },
                 )
                 artistBuckets[key] = Triple(
                     summary,
@@ -541,7 +547,7 @@ class Hub(val appContext: Context) {
     fun clearhistory() {
         scope.launch {
             dao.clearhistory()
-            dao.clearplayevents()
+            dao.clearevents()
         }
     }
 
@@ -582,13 +588,7 @@ class Hub(val appContext: Context) {
 
     fun logout() {
         scope.launch {
-            store.updatesession {
-                SessionData(
-                    lastFmUser = it.lastFmUser,
-                    lastFmSession = it.lastFmSession,
-                    scrobbleEnabled = it.scrobbleEnabled,
-                )
-            }
+            store.updatesession { SessionData() }
         }
     }
 }

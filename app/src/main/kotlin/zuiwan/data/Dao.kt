@@ -31,7 +31,7 @@ interface MusicDao {
     fun recenttracks(): Flow<List<TrackEntity>>
 
     @Query("SELECT * FROM tracks WHERE playCount > 0 ORDER BY totalPlayTimeMs DESC, playCount DESC LIMIT 50")
-    fun mostplayedtracks(): Flow<List<TrackEntity>>
+    fun mostplayed(): Flow<List<TrackEntity>>
 
     @Query(
         """
@@ -48,16 +48,16 @@ interface MusicDao {
     suspend fun clearhistory()
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun addplayevent(event: PlayEventEntity)
+    suspend fun addevent(event: PlayEventEntity)
 
     @Query("DELETE FROM play_events")
-    suspend fun clearplayevents()
+    suspend fun clearevents()
 
     @Query("SELECT SUM(playTimeMs) FROM play_events WHERE timestamp >= :since")
-    suspend fun playtimesince(since: Long): Long?
+    suspend fun timesince(since: Long): Long?
 
     @Query("SELECT COUNT(*) FROM play_events WHERE timestamp >= :since")
-    suspend fun playcountsince(since: Long): Int
+    suspend fun countsince(since: Long): Int
 
     @Query(
         """
@@ -97,22 +97,22 @@ interface MusicDao {
     suspend fun deleteplaylist(id: String)
 
     @Query("SELECT COUNT(*) FROM playlist_tracks")
-    fun totalplaylistlinks(): Flow<Int>
+    fun linkcount(): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM playlist_tracks WHERE playlistId = :playlistId")
     suspend fun playlistcount(playlistId: String): Int
 
     @Query("SELECT MAX(position) FROM playlist_tracks WHERE playlistId = :playlistId")
-    suspend fun maxplaylistpos(playlistId: String): Int?
+    suspend fun maxpos(playlistId: String): Int?
 
     @Upsert
-    suspend fun putplaylisttrack(entity: PlaylistTrackEntity)
+    suspend fun linktrack(entity: PlaylistTrackEntity)
 
     @Query("DELETE FROM playlist_tracks WHERE playlistId = :playlistId AND trackId = :trackId")
-    suspend fun removeplaylisttrack(playlistId: String, trackId: String)
+    suspend fun unlinktrack(playlistId: String, trackId: String)
 
     @Query("DELETE FROM playlist_tracks WHERE playlistId = :playlistId")
-    suspend fun clearplaylisttracks(playlistId: String)
+    suspend fun unlinkall(playlistId: String)
 
     @Query(
         """

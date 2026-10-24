@@ -175,21 +175,21 @@ class TubeClient {
             val tracks = if (!album.playlistId.isNullOrBlank()) {
                 val vlRes = innerTube.browse(YouTubeClient.WEB_REMIX, browseId = "VL${album.playlistId}")
                 val vlRoot = parseobj(vlRes.bodyAsText())
-                val (initial, firstCont) = TubeParser.parsealbumtracks(vlRoot, album)
+                val (initial, firstCont) = TubeParser.albumtracks(vlRoot, album)
                 val all = initial.toMutableList()
                 var cont = firstCont
                 var guard = 0
                 while (cont != null && guard < 15) {
                     guard++
                     val moreRes = innerTube.browse(YouTubeClient.WEB_REMIX, continuation = cont)
-                    val (moreTracks, nextCont) = TubeParser.parsealbumtracks(parseobj(moreRes.bodyAsText()), album)
+                    val (moreTracks, nextCont) = TubeParser.albumtracks(parseobj(moreRes.bodyAsText()), album)
                     if (moreTracks.isEmpty()) break
                     all += moreTracks
                     cont = nextCont
                 }
                 all
             } else {
-                TubeParser.parsealbumtracks(root, album).first
+                TubeParser.albumtracks(root, album).first
             }
             val refinedAlbum = if (album.artists.isEmpty() && tracks.isNotEmpty()) {
                 album.copy(artists = tracks.first().artists)
@@ -216,14 +216,14 @@ class TubeClient {
             TubeParser.parseplaylist(playlistId.removePrefix("VL"), parseobj(res.bodyAsText()))
         }
 
-    suspend fun loadmoreplaylist(continuation: String): Result<Pair<List<Track>, String?>> =
+    suspend fun moreplaylist(continuation: String): Result<Pair<List<Track>, String?>> =
         runCatching {
             val res = innerTube.browse(
                 YouTubeClient.WEB_REMIX,
                 continuation = continuation,
                 setLogin = innerTube.hasSapCookieAuth(),
             )
-            TubeParser.parseplaylistmore(parseobj(res.bodyAsText()))
+            TubeParser.moretracks(parseobj(res.bodyAsText()))
         }
 
     suspend fun suggestquery(input: String): Result<SuggestionBundle> =
@@ -280,7 +280,7 @@ class TubeClient {
             }
         }
 
-    suspend fun fetchtubelyrics(videoId: String): Result<Pair<String, Boolean>> =
+    suspend fun tubelyrics(videoId: String): Result<Pair<String, Boolean>> =
         runCatching {
             val transcriptResult = runCatching {
                 val tr = innerTube.getTranscript(YouTubeClient.WEB, videoId).body<GetTranscriptResponse>()
@@ -309,7 +309,7 @@ class TubeClient {
             val next = loadnext(videoId = videoId).getOrThrow()
             val browseId = next.lyricsBrowseId ?: error("No YouTube lyrics tab")
             val res = innerTube.browse(YouTubeClient.WEB_REMIX, browseId = browseId)
-            val plain = TubeParser.parselyricsbrowse(parseobj(res.bodyAsText())) ?: error("Empty YouTube lyrics")
+            val plain = TubeParser.parselyrics(parseobj(res.bodyAsText())) ?: error("Empty YouTube lyrics")
             plain to false
         }
 

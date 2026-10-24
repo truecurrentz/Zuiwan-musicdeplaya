@@ -55,56 +55,6 @@ object ZIcons {
         horizontalLineTo(18.8f)
     }
 
-    val Wordmark: ImageVector = ImageVector.Builder(
-        name = "Wordmark",
-        defaultWidth = 108.dp,
-        defaultHeight = 26.dp,
-        viewportWidth = 100f,
-        viewportHeight = 24f,
-    ).path(
-        fill = null,
-        stroke = SolidColor(Color.White),
-        strokeLineWidth = 2.55f,
-        strokeLineCap = StrokeCap.Round,
-        strokeLineJoin = StrokeJoin.Round,
-    ) {
-        moveTo(3.2f, 5.4f)
-        horizontalLineTo(16.2f)
-        lineTo(3.8f, 18.8f)
-        horizontalLineTo(16.6f)
-
-        moveTo(22.4f, 9.6f)
-        verticalLineTo(15.0f)
-        curveTo(22.4f, 17.4f, 24.4f, 19.0f, 27.1f, 19.0f)
-        curveTo(29.8f, 19.0f, 31.8f, 17.4f, 31.8f, 15.0f)
-        moveTo(31.8f, 9.6f)
-        verticalLineTo(18.8f)
-
-        moveTo(38.4f, 9.8f)
-        verticalLineTo(18.8f)
-        moveTo(38.4f, 5.3f)
-        verticalLineTo(5.5f)
-
-        moveTo(44.4f, 9.6f)
-        lineTo(47.8f, 18.8f)
-        lineTo(52.4f, 11.6f)
-        lineTo(57.0f, 18.8f)
-        lineTo(60.4f, 9.6f)
-
-        moveTo(75.6f, 14.2f)
-        arcTo(4.6f, 4.6f, 0f, true, true, 75.59f, 14.2f)
-        close()
-        moveTo(75.6f, 9.6f)
-        verticalLineTo(18.8f)
-
-        moveTo(82.4f, 18.8f)
-        verticalLineTo(9.6f)
-        moveTo(82.4f, 13.6f)
-        curveTo(82.4f, 11.0f, 84.6f, 9.5f, 87.5f, 9.5f)
-        curveTo(90.4f, 9.5f, 92.6f, 11.1f, 92.6f, 13.8f)
-        verticalLineTo(18.8f)
-    }.build()
-
     val Home: ImageVector = stroke("Home") {
         moveTo(12f, 3f)
         arcTo(9f, 9f, 0f, true, true, 11.99f, 3f)

@@ -31,9 +31,6 @@ data class Track(
     val libraryRemoveToken: String? = null,
 )
 
-fun Track.artistline(): String =
-    artists.joinToString(", ") { it.name }.ifBlank { "Unknown Artist" }
-
 @Serializable
 data class AudioSpec(
     val id: String,
@@ -48,39 +45,82 @@ data class AudioSpec(
     val client: String = "",
 )
 
+@Serializable
 enum class QualityMode(val label: String) {
     AUTO("Auto"),
     HIGH("High"),
     LOW("Data Saver"),
 }
 
+fun Track.artistline(): String =
+    artists.joinToString(", ") { it.name }.ifBlank { "Unknown Artist" }
+
+fun Track.trackart(size: Int = 544): String {
+    val primary = upscaleart(artwork, size)
+    if (primary.isNotBlank()) return primary
+    return fallbackart().orEmpty()
+}
+
+fun Track.fallbackart(): String? =
+    if (id.length in 8..16 && !id.startsWith("local_") && !id.startsWith("auto_")) {
+        "https://i.ytimg.com/vi/$id/hqdefault.jpg"
+    } else {
+        null
+    }
+
 fun upscaleart(url: String, size: Int = 544): String {
-    if (url.isBlank()) return ""
+    val raw = url.trim()
+    if (raw.isEmpty()) return ""
+    val normalized = when {
+        raw.startsWith("//") -> "https:$raw"
+        raw.startsWith("http://") -> "https://${raw.removePrefix("http://")}"
+        else -> raw
+    }
     return when {
-        url.contains("lh3.googleusercontent.com") || url.contains("yt3.ggpht.com") -> {
-            val base = url.substringBefore("=w").substringBefore("=s")
-            "$base=w$size-h$size-l90-rj"
-        }
-        url.contains("i.ytimg.com/vi/") -> {
-            if (size >= 544) {
-                url.replace("default.jpg", "hqdefault.jpg")
-                    .replace("mqhqdefault.jpg", "hqdefault.jpg")
-                    .replace("sdhqdefault.jpg", "sddefault.jpg")
+        normalized.contains("yt3.ggpht.com") || normalized.contains("yt3.googleusercontent.com") -> {
+            if (normalized.contains("?")) {
+                normalized
             } else {
-                url
+                val base = normalized.substringBefore("=w").substringBefore("=s")
+                "$base=s$size-c-k-c0x00ffffff-no-rj"
             }
         }
-        else -> url
+        normalized.contains("lh3.googleusercontent.com") -> {
+            if (normalized.contains("?")) {
+                normalized
+            } else {
+                val base = normalized.substringBefore("=w").substringBefore("=s")
+                "$base=w$size-h$size-l90-rj"
+            }
+        }
+        normalized.contains("i.ytimg.com/vi/") || normalized.contains("img.youtube.com/vi/") -> {
+            val vid = normalized.substringAfter("/vi/").substringBefore("/").substringBefore("?")
+            if (vid.isNotBlank()) {
+                "https://i.ytimg.com/vi/$vid/hqdefault.jpg"
+            } else {
+                normalized.substringBefore("?")
+            }
+        }
+        normalized.contains("i.ytimg.com/vi_webp/") -> {
+            val vid = normalized.substringAfter("/vi_webp/").substringBefore("/").substringBefore("?")
+            if (vid.isNotBlank()) {
+                "https://i.ytimg.com/vi/$vid/hqdefault.jpg"
+            } else {
+                normalized
+            }
+        }
+        else -> normalized
     }
 }
 
 fun formatclock(ms: Long): String {
-    val safeSec = (ms / 1_000L).coerceAtLeast(0L)
-    val hrs = safeSec / 3_600L
-    val mins = (safeSec % 3_600L) / 60L
-    val secs = safeSec % 60L
-    return if (hrs > 0L) {
-        "%d:%02d:%02d".format(hrs, mins, secs)
+    if (ms <= 0L) return "0:00"
+    val totalSec = ms / 1_000L
+    val hours = totalSec / 3_600L
+    val mins = (totalSec % 3_600L) / 60L
+    val secs = totalSec % 60L
+    return if (hours > 0L) {
+        "%d:%02d:%02d".format(hours, mins, secs)
     } else {
         "%02d:%02d".format(mins, secs)
     }

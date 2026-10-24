@@ -18,9 +18,10 @@ import coil3.size.Size
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import zuiwan.model.upscaleart
 
 @Composable
-fun rememberartcolors(
+fun artcolors(
     artworkUrl: String?,
     enabled: Boolean,
     dark: Boolean,
@@ -33,7 +34,8 @@ fun rememberartcolors(
     val context = LocalContext.current
 
     LaunchedEffect(artworkUrl, enabled, dark) {
-        if (!enabled || artworkUrl.isNullOrBlank()) {
+        val cleanUrl = artworkUrl?.let { upscaleart(it, 256) }.orEmpty()
+        if (!enabled || cleanUrl.isBlank()) {
             targetPrimary = defaultPrimary
             targetSecondary = defaultSecondary
             return@LaunchedEffect
@@ -41,7 +43,7 @@ fun rememberartcolors(
         withContext(Dispatchers.IO) {
             runCatching {
                 val req = ImageRequest.Builder(context)
-                    .data(artworkUrl)
+                    .data(cleanUrl)
                     .size(Size(128, 128))
                     .allowHardware(false)
                     .build()

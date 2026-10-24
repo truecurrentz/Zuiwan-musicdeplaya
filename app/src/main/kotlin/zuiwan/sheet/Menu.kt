@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -33,16 +32,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import zuiwan.model.Track
 import zuiwan.model.artistline
+import zuiwan.model.fallbackart
+import zuiwan.model.trackart
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.ArtImage
-import zuiwan.ui.GlassIconButton
 import zuiwan.ui.Route
 import zuiwan.ui.ZIcons
+import zuiwan.ui.artimage
+import zuiwan.ui.iconbtn
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TrackMenuSheet(
+fun menusheet(
     track: Track,
     onDismiss: () -> Unit,
     onNavigate: (Route) -> Unit,
@@ -50,7 +51,7 @@ fun TrackMenuSheet(
     onShowInfo: (Track) -> Unit,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val context = LocalContext.current
     val likedIds by hub.likedIds.collectAsState()
     val downloadedIds by hub.downloadedIds.collectAsState()
@@ -62,8 +63,8 @@ fun TrackMenuSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = glass.glassStrong,
-        contentColor = glass.ink,
+        containerColor = glassTokens.glassStrong,
+        contentColor = glassTokens.ink,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
     ) {
         Column(
@@ -77,9 +78,11 @@ fun TrackMenuSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                ArtImage(
-                    url = track.artwork,
+                artimage(
+                    url = track.trackart(),
+                    fallbackUrl = track.fallbackart(),
                     shape = RoundedCornerShape(14.dp),
+                    fallbackIcon = ZIcons.Note,
                     modifier = Modifier.size(56.dp),
                 )
                 Spacer(Modifier.width(14.dp))
@@ -87,46 +90,44 @@ fun TrackMenuSheet(
                     Text(
                         text = track.title,
                         style = MaterialTheme.typography.titleLarge,
-                        color = glass.ink,
+                        color = glassTokens.ink,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = track.artistline(),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = glass.inkSecondary,
+                        color = glassTokens.inkSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                GlassIconButton(
+                iconbtn(
                     icon = if (isLiked) ZIcons.HeartFilled else ZIcons.Heart,
                     active = isLiked,
                     onClick = { hub.togglelike(track) },
                 )
             }
 
-            Spacer(Modifier.height(14.dp))
-            HorizontalDivider(color = glass.glassBorder)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(12.dp))
 
-            MenuActionRow(ZIcons.Play, "Play next") {
+            menurow(ZIcons.Play, "Play next") {
                 hub.pilot.playnext(track)
                 onDismiss()
             }
-            MenuActionRow(ZIcons.Queue, "Add to queue") {
+            menurow(ZIcons.Queue, "Add to queue") {
                 hub.pilot.enqueue(track)
                 onDismiss()
             }
-            MenuActionRow(ZIcons.Radio, "Start instant radio") {
-                hub.pilot.audioplay(track, "${track.title} Radio")
+            menurow(ZIcons.Radio, "Start instant radio") {
+                hub.pilot.audioplay(track, "${track.title} Radio", fetchRadio = true)
                 onDismiss()
             }
-            MenuActionRow(ZIcons.Playlist, "Add to playlist") {
+            menurow(ZIcons.Playlist, "Add to playlist") {
                 onDismiss()
                 onAddToPlaylist(track)
             }
-            MenuActionRow(
+            menurow(
                 icon = if (isDownloaded) ZIcons.Trash else ZIcons.Download,
                 label = when {
                     activeProgress != null -> "Downloading ${(activeProgress * 100).toInt()}% (tap to cancel)"
@@ -143,22 +144,22 @@ fun TrackMenuSheet(
             }
 
             track.artists.firstOrNull()?.id?.let { artistId ->
-                MenuActionRow(ZIcons.Artist, "Go to artist") {
+                menurow(ZIcons.Artist, "Go to artist") {
                     onDismiss()
                     onNavigate(Route.Artist(artistId))
                 }
             }
             track.album?.id?.let { albumId ->
-                MenuActionRow(ZIcons.Album, "Go to album") {
+                menurow(ZIcons.Album, "Go to album") {
                     onDismiss()
                     onNavigate(Route.Album(albumId))
                 }
             }
-            MenuActionRow(ZIcons.Info, "Song info") {
+            menurow(ZIcons.Info, "Song info") {
                 onDismiss()
                 onShowInfo(track)
             }
-            MenuActionRow(ZIcons.Share, "Share link") {
+            menurow(ZIcons.Share, "Share link") {
                 val share = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
                     putExtra(
@@ -174,12 +175,12 @@ fun TrackMenuSheet(
 }
 
 @Composable
-private fun MenuActionRow(
+private fun menurow(
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -192,13 +193,13 @@ private fun MenuActionRow(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = glass.inkSecondary,
+            tint = glassTokens.inkSecondary,
             modifier = Modifier.size(20.dp),
         )
         Text(
             text = label,
             style = MaterialTheme.typography.titleMedium,
-            color = glass.ink,
+            color = glassTokens.ink,
         )
     }
 }

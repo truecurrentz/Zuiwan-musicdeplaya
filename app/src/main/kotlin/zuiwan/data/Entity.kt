@@ -14,6 +14,8 @@ import zuiwan.model.AudioSpec
 import zuiwan.model.LyricPayload
 import zuiwan.model.PlaylistSummary
 import zuiwan.model.Track
+import zuiwan.model.trackart
+import zuiwan.model.upscaleart
 
 private val entityJson = Json {
     ignoreUnknownKeys = true
@@ -44,13 +46,20 @@ fun TrackEntity.totrack(): Track {
     val parsed = runCatching {
         entityJson.decodeFromString<List<ArtistRef>>(artistsJson)
     }.getOrDefault(emptyList())
+    val repairedArt = upscaleart(artwork).ifBlank {
+        if (id.length in 8..16 && !id.startsWith("local_") && !id.startsWith("auto_")) {
+            "https://i.ytimg.com/vi/$id/hqdefault.jpg"
+        } else {
+            ""
+        }
+    }
     return Track(
         id = id,
         title = title,
         artists = parsed,
         album = albumName?.takeIf { it.isNotBlank() }?.let { AlbumRef(albumId, it) },
         duration = duration,
-        artwork = artwork,
+        artwork = repairedArt,
         explicit = explicit,
         video = video,
         liked = liked,
@@ -66,7 +75,7 @@ fun Track.toentity(): TrackEntity =
         albumId = album?.id,
         albumName = album?.name,
         duration = duration,
-        artwork = artwork,
+        artwork = trackart(),
         explicit = explicit,
         video = video,
         liked = liked,
@@ -95,7 +104,7 @@ fun AlbumEntity.tosummary(): AlbumSummary =
         title = title,
         artists = runCatching { entityJson.decodeFromString<List<ArtistRef>>(artistsJson) }.getOrDefault(emptyList()),
         year = year,
-        artwork = artwork,
+        artwork = upscaleart(artwork),
         explicit = explicit,
         saved = saved,
     )
@@ -107,7 +116,7 @@ fun AlbumSummary.toentity(savedOverride: Boolean = saved): AlbumEntity =
         title = title,
         artistsJson = entityJson.encodeToString(artists),
         year = year,
-        artwork = artwork,
+        artwork = upscaleart(artwork),
         explicit = explicit,
         saved = savedOverride,
     )
@@ -127,7 +136,7 @@ fun ArtistEntity.tosummary(): ArtistSummary =
     ArtistSummary(
         id = id,
         name = name,
-        artwork = artwork,
+        artwork = upscaleart(artwork),
         subscribers = subscribers,
         channelId = channelId,
         saved = saved,
@@ -137,7 +146,7 @@ fun ArtistSummary.toentity(savedOverride: Boolean = saved): ArtistEntity =
     ArtistEntity(
         id = id,
         name = name,
-        artwork = artwork,
+        artwork = upscaleart(artwork),
         subscribers = subscribers,
         channelId = channelId,
         saved = savedOverride,
@@ -161,7 +170,7 @@ fun PlaylistEntity.tosummary(count: Int): PlaylistSummary =
         title = title,
         author = author ?: "You",
         countText = "$count songs",
-        artwork = artwork,
+        artwork = upscaleart(artwork),
         local = local,
         remoteId = remoteId,
         editable = editable,

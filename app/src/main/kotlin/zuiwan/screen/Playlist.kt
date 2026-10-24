@@ -60,18 +60,19 @@ import zuiwan.model.PlaylistDetail
 import zuiwan.model.PlaylistSummary
 import zuiwan.model.Track
 import zuiwan.model.artistline
+import zuiwan.model.trackart
 import zuiwan.model.upscaleart
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.DetailHero
-import zuiwan.ui.GlassBox
-import zuiwan.ui.GlassIconButton
-import zuiwan.ui.GlassTopBar
-import zuiwan.ui.PlaylistThumb
-import zuiwan.ui.ScrollHeaderHost
-import zuiwan.ui.SongRow
+import zuiwan.ui.hero
+import zuiwan.ui.glass
+import zuiwan.ui.iconbtn
+import zuiwan.ui.topbar
+import zuiwan.ui.covergrid
+import zuiwan.ui.scrollhost
+import zuiwan.ui.songrow
 import zuiwan.ui.ZIcons
-import zuiwan.ui.rememberheaderscroll
+import zuiwan.ui.headerscroll
 
 @Composable
 fun viewplaylist(
@@ -82,7 +83,7 @@ fun viewplaylist(
     bottomPadding: PaddingValues,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
@@ -108,7 +109,7 @@ fun viewplaylist(
     var dragOffsetPx by remember { mutableFloatStateOf(0f) }
     val rowHeightPx = with(density) { 68.dp.toPx() }
 
-    val headerScroll = rememberheaderscroll()
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
 
@@ -142,14 +143,14 @@ fun viewplaylist(
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("audio/x-mpegurl"),
     ) { uri ->
-        if (uri != null) hub.exportm3u(playlistId, uri)
+        if (uri != null) hub.exportlist(playlistId, uri)
     }
 
     suspend fun reload() {
         if (isAuto) return
         loading = true
         remoteOrLocalDetail = if (isLocalEditable) {
-            hub.loadlocalplaylist(playlistId)
+            hub.localplaylist(playlistId)
         } else {
             hub.tube.loadplaylist(playlistId).getOrNull()
         }
@@ -167,7 +168,7 @@ fun viewplaylist(
                 title = "Liked Songs",
                 author = "Your Library",
                 local = true,
-                thumbnails = likedTracks.mapNotNull { it.artwork.takeIf(String::isNotBlank) }.distinct().take(4),
+                thumbnails = likedTracks.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4),
                 songCount = likedTracks.size,
             ),
             tracks = likedTracks,
@@ -178,7 +179,7 @@ fun viewplaylist(
                 title = "Offline",
                 author = "Downloaded Music",
                 local = true,
-                thumbnails = downloadedTracks.mapNotNull { it.artwork.takeIf(String::isNotBlank) }.distinct().take(4),
+                thumbnails = downloadedTracks.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4),
                 songCount = downloadedTracks.size,
             ),
             tracks = downloadedTracks,
@@ -189,7 +190,7 @@ fun viewplaylist(
                 title = "Cached",
                 author = "Recent & Instant Playback",
                 local = true,
-                thumbnails = historyTracks.mapNotNull { it.artwork.takeIf(String::isNotBlank) }.distinct().take(4),
+                thumbnails = historyTracks.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4),
                 songCount = historyTracks.size,
             ),
             tracks = historyTracks,
@@ -202,7 +203,7 @@ fun viewplaylist(
                     title = "My Top 50",
                     author = "Most Played",
                     local = true,
-                    thumbnails = pool.mapNotNull { it.artwork.takeIf(String::isNotBlank) }.distinct().take(4),
+                    thumbnails = pool.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4),
                     songCount = pool.size,
                 ),
                 tracks = pool,
@@ -215,7 +216,7 @@ fun viewplaylist(
         val cont = remoteOrLocalDetail?.continuation
         if (nearEnd && !cont.isNullOrBlank() && !loading && !isLocalEditable && !isAuto) {
             loading = true
-            hub.tube.loadmoreplaylist(cont).onSuccess { (more, nextCont) ->
+            hub.tube.moreplaylist(cont).onSuccess { (more, nextCont) ->
                 val cur = remoteOrLocalDetail ?: return@onSuccess
                 remoteOrLocalDetail = cur.copy(
                     tracks = cur.tracks + more,
@@ -229,9 +230,9 @@ fun viewplaylist(
     if (showRename) {
         AlertDialog(
             onDismissRequest = { showRename = false },
-            containerColor = glass.glassStrong,
-            titleContentColor = glass.ink,
-            textContentColor = glass.ink,
+            containerColor = glassTokens.glassStrong,
+            titleContentColor = glassTokens.ink,
+            textContentColor = glassTokens.ink,
             title = { Text("Rename Playlist") },
             text = {
                 OutlinedTextField(
@@ -248,12 +249,12 @@ fun viewplaylist(
                         scope.launch { reload() }
                     },
                 ) {
-                    Text("Save", color = glass.accent)
+                    Text("Save", color = glassTokens.accent)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showRename = false }) {
-                    Text("Cancel", color = glass.inkSecondary)
+                    Text("Cancel", color = glassTokens.inkSecondary)
                 }
             },
         )
@@ -271,12 +272,12 @@ fun viewplaylist(
         savedPlaylists.any { it.id == playlistId }
     }
 
-    ScrollHeaderHost(
+    scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         overlayHero = true,
         header = {
-            GlassTopBar(
+            topbar(
                 title = detail?.playlist?.title ?: "Playlist",
                 showTitle = pastHero || detail == null,
                 onBack = {
@@ -289,7 +290,7 @@ fun viewplaylist(
                 },
                 actions = {
                     if (detail != null) {
-                        GlassIconButton(
+                        iconbtn(
                             icon = if (searchOpen) ZIcons.Close else ZIcons.Search,
                             onClick = {
                                 if (searchOpen) {
@@ -302,18 +303,18 @@ fun viewplaylist(
                         )
                         if (isLocalEditable) {
                             Box {
-                                GlassIconButton(
+                                iconbtn(
                                     icon = ZIcons.MoreHoriz,
                                     onClick = { menuOpen = true },
                                 )
                                 DropdownMenu(
                                     expanded = menuOpen,
                                     onDismissRequest = { menuOpen = false },
-                                    containerColor = glass.glassStrong,
+                                    containerColor = glassTokens.glassStrong,
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Rename playlist", color = glass.ink) },
-                                        leadingIcon = { Icon(ZIcons.Edit, null, tint = glass.inkSecondary, modifier = Modifier.size(18.dp)) },
+                                        text = { Text("Rename playlist", color = glassTokens.ink) },
+                                        leadingIcon = { Icon(ZIcons.Edit, null, tint = glassTokens.inkSecondary, modifier = Modifier.size(18.dp)) },
                                         onClick = {
                                             menuOpen = false
                                             renameText = detail.playlist.title
@@ -321,16 +322,16 @@ fun viewplaylist(
                                         },
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Export .m3u", color = glass.ink) },
-                                        leadingIcon = { Icon(ZIcons.Share, null, tint = glass.inkSecondary, modifier = Modifier.size(18.dp)) },
+                                        text = { Text("Export .m3u", color = glassTokens.ink) },
+                                        leadingIcon = { Icon(ZIcons.Share, null, tint = glassTokens.inkSecondary, modifier = Modifier.size(18.dp)) },
                                         onClick = {
                                             menuOpen = false
                                             exportLauncher.launch("${detail.playlist.title}.m3u")
                                         },
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Delete playlist", color = glass.danger) },
-                                        leadingIcon = { Icon(ZIcons.Trash, null, tint = glass.danger, modifier = Modifier.size(18.dp)) },
+                                        text = { Text("Delete playlist", color = glassTokens.danger) },
+                                        leadingIcon = { Icon(ZIcons.Trash, null, tint = glassTokens.danger, modifier = Modifier.size(18.dp)) },
                                         onClick = {
                                             menuOpen = false
                                             hub.deleteplaylist(playlistId)
@@ -358,14 +359,14 @@ fun viewplaylist(
                             .fillMaxWidth()
                             .padding(top = 140.dp, bottom = 80.dp),
                     ) {
-                        CircularProgressIndicator(color = glass.accent)
+                        CircularProgressIndicator(color = glassTokens.accent)
                     }
                 }
             }
 
             detail?.let { info ->
                 val thumbs = info.playlist.thumbnails.ifEmpty {
-                    info.tracks.mapNotNull { it.artwork.takeIf(String::isNotBlank) }.distinct().take(4)
+                    info.tracks.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4)
                 }
                 val rawHeroArt = info.playlist.artwork.ifBlank { thumbs.firstOrNull().orEmpty() }
                 val heroArt = upscaleart(rawHeroArt, 1080)
@@ -388,16 +389,16 @@ fun viewplaylist(
                 }
 
                 item(key = "hero") {
-                    DetailHero(
+                    hero(
                         title = info.playlist.title,
                         artworkUrl = heroArt,
                         fallbackIcon = autoFallbackIcon,
-                        artworkSlot = if (isAuto || (info.playlist.artwork.isBlank() && thumbs.size >= 4)) {
+                        artworkSlot = if (isAuto || (info.playlist.artwork.isBlank() && thumbs.isNotEmpty())) {
                             {
-                                PlaylistThumb(
+                                covergrid(
                                     thumbnails = thumbs,
                                     fallbackIcon = autoFallbackIcon,
-                                    preferIcon = isAuto && thumbs.size < 4,
+                                    preferIcon = isAuto && thumbs.isEmpty(),
                                     shape = RoundedCornerShape(22.dp),
                                     modifier = Modifier.fillMaxSize(),
                                 )
@@ -418,16 +419,16 @@ fun viewplaylist(
                         },
                         primaryActions = {
                             if (!isAuto && !isLocalEditable) {
-                                GlassIconButton(
+                                iconbtn(
                                     icon = if (isBookmarked) ZIcons.HeartFilled else ZIcons.Heart,
                                     active = isBookmarked,
                                     softFill = true,
                                     size = 48.dp,
                                     iconSize = 21.dp,
-                                    onClick = { hub.togglesaveplaylist(info.playlist) },
+                                    onClick = { hub.saveplaylist(info.playlist) },
                                 )
                             } else if (playlistId != "auto_offline") {
-                                GlassIconButton(
+                                iconbtn(
                                     icon = ZIcons.Download,
                                     softFill = true,
                                     size = 48.dp,
@@ -436,7 +437,7 @@ fun viewplaylist(
                                 )
                             }
 
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.Play,
                                 solidAccent = true,
                                 size = 64.dp,
@@ -453,7 +454,7 @@ fun viewplaylist(
                                 },
                             )
 
-                            GlassIconButton(
+                            iconbtn(
                                 icon = ZIcons.Shuffle,
                                 softFill = true,
                                 size = 48.dp,
@@ -475,7 +476,7 @@ fun viewplaylist(
 
                 if (searchOpen) {
                     item(key = "pl_search") {
-                        GlassBox(
+                        glass(
                             shape = RoundedCornerShape(999.dp),
                             elevated = true,
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
@@ -487,22 +488,22 @@ fun viewplaylist(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Icon(ZIcons.Search, null, tint = glass.inkSecondary, modifier = Modifier.size(18.dp))
+                                Icon(ZIcons.Search, null, tint = glassTokens.inkSecondary, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(10.dp))
                                 Box(modifier = Modifier.weight(1f)) {
                                     if (query.isEmpty()) {
                                         Text(
                                             text = "Filter songs in playlist",
                                             style = MaterialTheme.typography.bodyLarge,
-                                            color = glass.inkSecondary,
+                                            color = glassTokens.inkSecondary,
                                         )
                                     }
                                     BasicTextField(
                                         value = query,
                                         onValueChange = { query = it },
                                         singleLine = true,
-                                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = glass.ink),
-                                        cursorBrush = SolidColor(glass.accent),
+                                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = glassTokens.ink),
+                                        cursorBrush = SolidColor(glassTokens.accent),
                                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -510,7 +511,7 @@ fun viewplaylist(
                                     )
                                 }
                                 if (query.isNotEmpty()) {
-                                    GlassIconButton(
+                                    iconbtn(
                                         icon = ZIcons.Close,
                                         onClick = { query = "" },
                                         size = 28.dp,
@@ -533,7 +534,7 @@ fun viewplaylist(
                             Text(
                                 text = if (cleanQ.isNotBlank()) "No matching songs" else "No songs in this playlist yet",
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = glass.inkSecondary,
+                                color = glassTokens.inkSecondary,
                             )
                         }
                     }
@@ -544,7 +545,7 @@ fun viewplaylist(
                     key = { _, pair -> "${pair.second.id}_${pair.first}" },
                 ) { viewIdx, (origIdx, song) ->
                     val isDragging = draggingIdx == origIdx && cleanQ.isBlank()
-                    SongRow(
+                    songrow(
                         track = song,
                         playing = playback.current?.id == song.id,
                         onClick = {
@@ -560,14 +561,14 @@ fun viewplaylist(
                                             .size(34.dp)
                                             .clip(CircleShape)
                                             .clickable {
-                                                hub.removefromplaylist(playlistId, song.id)
+                                                hub.droptrack(playlistId, song.id)
                                                 scope.launch { reload() }
                                             },
                                     ) {
                                         Icon(
                                             imageVector = ZIcons.Close,
                                             contentDescription = "Remove",
-                                            tint = glass.inkMuted,
+                                            tint = glassTokens.inkMuted,
                                             modifier = Modifier.size(16.dp),
                                         )
                                     }
@@ -612,7 +613,7 @@ fun viewplaylist(
                                         Icon(
                                             imageVector = ZIcons.Drag,
                                             contentDescription = "Reorder",
-                                            tint = glass.inkMuted,
+                                            tint = glassTokens.inkMuted,
                                             modifier = Modifier.size(17.dp),
                                         )
                                     }
@@ -626,7 +627,7 @@ fun viewplaylist(
                                         Icon(
                                             imageVector = ZIcons.More,
                                             contentDescription = null,
-                                            tint = glass.inkSecondary,
+                                            tint = glassTokens.inkSecondary,
                                             modifier = Modifier.size(17.dp),
                                         )
                                     }
@@ -652,7 +653,7 @@ fun viewplaylist(
                                 .fillMaxWidth()
                                 .padding(vertical = 20.dp),
                         ) {
-                            CircularProgressIndicator(color = glass.accent, modifier = Modifier.size(26.dp))
+                            CircularProgressIndicator(color = glassTokens.accent, modifier = Modifier.size(26.dp))
                         }
                     }
                 }

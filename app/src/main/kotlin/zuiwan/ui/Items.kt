@@ -25,7 +25,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +36,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -50,12 +54,15 @@ import zuiwan.model.FeedItem
 import zuiwan.model.PlaylistSummary
 import zuiwan.model.Track
 import zuiwan.model.artistline
+import zuiwan.model.fallbackart
 import zuiwan.model.formatclock
+import zuiwan.model.trackart
+import zuiwan.model.upscaleart
 import zuiwan.theme.LocalGlass
 import kotlin.random.Random
 
 @Composable
-fun PlayingBars(
+fun playbars(
     color: Color,
     modifier: Modifier = Modifier,
     active: Boolean = true,
@@ -104,33 +111,55 @@ fun PlayingBars(
 }
 
 @Composable
-fun ArtImage(
+fun artimage(
     url: String?,
     modifier: Modifier = Modifier,
+    fallbackUrl: String? = null,
     shape: Shape = RoundedCornerShape(12.dp),
     fallbackIcon: ImageVector = ZIcons.Album,
+    iconScale: Float = 0.42f,
     playing: Boolean = false,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
+    val primaryUrl = remember(url) { url?.let { upscaleart(it) }.orEmpty() }
+    val secondaryUrl = remember(fallbackUrl) { fallbackUrl?.let { upscaleart(it) }.orEmpty() }
+
+    var useSecondary by remember(primaryUrl, secondaryUrl) { mutableStateOf(false) }
+    var failedAll by remember(primaryUrl, secondaryUrl) { mutableStateOf(false) }
+
+    val activeUrl = when {
+        failedAll -> ""
+        !useSecondary && primaryUrl.isNotBlank() -> primaryUrl
+        secondaryUrl.isNotBlank() -> secondaryUrl
+        else -> ""
+    }
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .clip(shape)
-            .background(glass.glassElevated),
+            .background(glassTokens.glassElevated),
     ) {
-        if (!url.isNullOrBlank()) {
+        if (activeUrl.isNotBlank()) {
             AsyncImage(
-                model = url,
+                model = activeUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                onError = {
+                    if (!useSecondary && secondaryUrl.isNotBlank() && secondaryUrl != primaryUrl) {
+                        useSecondary = true
+                    } else {
+                        failedAll = true
+                    }
+                },
                 modifier = Modifier.matchParentSize(),
             )
         } else {
             Icon(
                 imageVector = fallbackIcon,
                 contentDescription = null,
-                tint = glass.inkMuted,
-                modifier = Modifier.size(22.dp),
+                tint = glassTokens.inkMuted,
+                modifier = Modifier.fillMaxSize(iconScale),
             )
         }
         if (playing) {
@@ -140,7 +169,7 @@ fun ArtImage(
                     .matchParentSize()
                     .background(Color.Black.copy(alpha = 0.44f)),
             ) {
-                PlayingBars(
+                playbars(
                     color = Color.White,
                     modifier = Modifier.height(18.dp),
                 )
@@ -150,7 +179,7 @@ fun ArtImage(
 }
 
 @Composable
-fun PlaylistThumb(
+fun covergrid(
     thumbnails: List<String>,
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(14.dp),
@@ -158,8 +187,13 @@ fun PlaylistThumb(
     iconTint: Color? = null,
     preferIcon: Boolean = false,
 ) {
-    val glass = LocalGlass.current
-    val clean = remember(thumbnails) { thumbnails.filter { it.isNotBlank() }.distinct() }
+    val glassTokens = LocalGlass.current
+    val clean = remember(thumbnails) {
+        thumbnails
+            .map { upscaleart(it) }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
 
     Box(
         contentAlignment = Alignment.Center,
@@ -168,8 +202,8 @@ fun PlaylistThumb(
             .background(
                 Brush.linearGradient(
                     colors = listOf(
-                        glass.accent.copy(alpha = if (glass.isDark) 0.22f else 0.14f),
-                        glass.accentSecondary.copy(alpha = if (glass.isDark) 0.14f else 0.09f),
+                        glassTokens.accent.copy(alpha = if (glassTokens.isDark) 0.22f else 0.14f),
+                        glassTokens.accentSecondary.copy(alpha = if (glassTokens.isDark) 0.14f else 0.09f),
                     ),
                 ),
             ),
@@ -179,45 +213,45 @@ fun PlaylistThumb(
                 Icon(
                     imageVector = fallbackIcon,
                     contentDescription = null,
-                    tint = iconTint ?: glass.accent,
+                    tint = iconTint ?: glassTokens.accent,
                     modifier = Modifier.fillMaxSize(0.44f),
                 )
             }
             clean.size < 4 -> {
-                AsyncImage(
-                    model = clean[0],
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                artimage(
+                    url = clean[0],
+                    shape = RectangleShape,
+                    fallbackIcon = fallbackIcon,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
             else -> {
                 Column(modifier = Modifier.fillMaxSize()) {
                     Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                        AsyncImage(
-                            model = clean[0],
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
+                        artimage(
+                            url = clean[0],
+                            shape = RectangleShape,
+                            fallbackIcon = fallbackIcon,
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
-                        AsyncImage(
-                            model = clean[1],
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
+                        artimage(
+                            url = clean[1],
+                            shape = RectangleShape,
+                            fallbackIcon = fallbackIcon,
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
                     }
                     Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                        AsyncImage(
-                            model = clean[2],
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
+                        artimage(
+                            url = clean[2],
+                            shape = RectangleShape,
+                            fallbackIcon = fallbackIcon,
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
-                        AsyncImage(
-                            model = clean[3],
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
+                        artimage(
+                            url = clean[3],
+                            shape = RectangleShape,
+                            fallbackIcon = fallbackIcon,
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
                     }
@@ -228,13 +262,13 @@ fun PlaylistThumb(
 }
 
 @Composable
-fun SectionHeader(
+fun sectionbar(
     title: String,
     subtitle: String? = null,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -247,7 +281,7 @@ fun SectionHeader(
                 Text(
                     text = subtitle.uppercase(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = glass.accent,
+                    color = glassTokens.accent,
                     maxLines = 1,
                 )
             }
@@ -255,7 +289,7 @@ fun SectionHeader(
                 text = title,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = glass.ink,
+                color = glassTokens.ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -266,19 +300,19 @@ fun SectionHeader(
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(glass.glassElevated)
+                    .background(glassTokens.glassElevated)
                     .clickable(onClick = onAction)
                     .padding(horizontal = 13.dp, vertical = 6.dp),
             ) {
                 Text(
                     text = actionLabel,
                     style = MaterialTheme.typography.labelMedium,
-                    color = glass.ink,
+                    color = glassTokens.ink,
                 )
                 Icon(
                     imageVector = ZIcons.ArrowForward,
                     contentDescription = null,
-                    tint = glass.inkSecondary,
+                    tint = glassTokens.inkSecondary,
                     modifier = Modifier.size(13.dp),
                 )
             }
@@ -287,7 +321,7 @@ fun SectionHeader(
 }
 
 @Composable
-fun SongRow(
+fun songrow(
     track: Track,
     onClick: () -> Unit,
     onMore: (() -> Unit)? = null,
@@ -299,11 +333,11 @@ fun SongRow(
     cardBackground: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val shape = RoundedCornerShape(14.dp)
     val rowBg = when {
-        playing -> glass.accentSoft
-        cardBackground -> glass.glassFill
+        playing -> glassTokens.accentSoft
+        cardBackground -> glassTokens.glassFill
         else -> Color.Transparent
     }
 
@@ -322,24 +356,26 @@ fun SongRow(
                 modifier = Modifier.width(30.dp),
             ) {
                 if (playing) {
-                    PlayingBars(
-                        color = glass.accent,
+                    playbars(
+                        color = glassTokens.accent,
                         modifier = Modifier.height(17.dp),
                     )
                 } else {
                     Text(
                         text = indexNumber.toString(),
                         style = MaterialTheme.typography.labelLarge,
-                        color = glass.inkSecondary,
+                        color = glassTokens.inkSecondary,
                         textAlign = TextAlign.Center,
                     )
                 }
             }
             Spacer(Modifier.width(10.dp))
         } else {
-            ArtImage(
-                url = track.artwork,
+            artimage(
+                url = track.trackart(),
+                fallbackUrl = track.fallbackart(),
                 shape = RoundedCornerShape(11.dp),
+                fallbackIcon = ZIcons.Note,
                 playing = playing,
                 modifier = Modifier.size(50.dp),
             )
@@ -354,7 +390,7 @@ fun SongRow(
                 Text(
                     text = track.title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (playing) glass.accent else glass.ink,
+                    color = if (playing) glassTokens.accent else glassTokens.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
@@ -364,13 +400,13 @@ fun SongRow(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(glass.glassElevated)
+                            .background(glassTokens.glassElevated)
                             .padding(horizontal = 4.dp, vertical = 1.dp),
                     ) {
                         Text(
                             text = "E",
                             style = MaterialTheme.typography.labelSmall,
-                            color = glass.inkSecondary,
+                            color = glassTokens.inkSecondary,
                         )
                     }
                 }
@@ -384,7 +420,7 @@ fun SongRow(
                     Icon(
                         imageVector = ZIcons.HeartFilled,
                         contentDescription = null,
-                        tint = glass.accent,
+                        tint = glassTokens.accent,
                         modifier = Modifier.size(12.dp),
                     )
                 }
@@ -392,7 +428,7 @@ fun SongRow(
                     Icon(
                         imageVector = ZIcons.Offline,
                         contentDescription = null,
-                        tint = glass.accent,
+                        tint = glassTokens.accent,
                         modifier = Modifier.size(13.dp),
                     )
                 }
@@ -406,7 +442,7 @@ fun SongRow(
                 Text(
                     text = metaText,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = glass.inkSecondary,
+                    color = glassTokens.inkSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -426,7 +462,7 @@ fun SongRow(
                 Icon(
                     imageVector = ZIcons.More,
                     contentDescription = null,
-                    tint = glass.inkSecondary,
+                    tint = glassTokens.inkSecondary,
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -435,27 +471,29 @@ fun SongRow(
 }
 
 @Composable
-fun QuickPickTile(
+fun picktile(
     track: Track,
     playing: Boolean,
     onClick: () -> Unit,
     onMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val shape = RoundedCornerShape(14.dp)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .width(292.dp)
             .clip(shape)
-            .background(if (playing) glass.accentSoft else Color.Transparent)
+            .background(if (playing) glassTokens.accentSoft else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 6.dp),
     ) {
-        ArtImage(
-            url = track.artwork,
+        artimage(
+            url = track.trackart(),
+            fallbackUrl = track.fallbackart(),
             shape = RoundedCornerShape(11.dp),
+            fallbackIcon = ZIcons.Note,
             playing = playing,
             modifier = Modifier.size(54.dp),
         )
@@ -464,7 +502,7 @@ fun QuickPickTile(
             Text(
                 text = track.title,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (playing) glass.accent else glass.ink,
+                color = if (playing) glassTokens.accent else glassTokens.ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -472,7 +510,7 @@ fun QuickPickTile(
             Text(
                 text = track.artistline(),
                 style = MaterialTheme.typography.bodyMedium,
-                color = glass.inkSecondary,
+                color = glassTokens.inkSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -487,7 +525,7 @@ fun QuickPickTile(
             Icon(
                 imageVector = ZIcons.More,
                 contentDescription = null,
-                tint = glass.inkSecondary,
+                tint = glassTokens.inkSecondary,
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -495,20 +533,21 @@ fun QuickPickTile(
 }
 
 @Composable
-fun MediaCard(
+fun mediacard(
     item: FeedItem,
     onClick: () -> Unit,
     onLongOrMore: (() -> Unit)? = null,
     width: Dp = 152.dp,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val isArtist = item is FeedItem.ArtistCard
     val artUrl = when (item) {
-        is FeedItem.SongCard -> item.track.artwork
-        is FeedItem.AlbumCard -> item.album.artwork
-        is FeedItem.ArtistCard -> item.artist.artwork
-        is FeedItem.PlaylistCard -> item.playlist.artwork
+        is FeedItem.SongCard -> item.track.trackart()
+        is FeedItem.AlbumCard -> upscaleart(item.album.artwork)
+        is FeedItem.ArtistCard -> upscaleart(item.artist.artwork)
+        is FeedItem.PlaylistCard -> upscaleart(item.playlist.artwork)
     }
+    val fallbackUrl = (item as? FeedItem.SongCard)?.track?.fallbackart()
     val title = when (item) {
         is FeedItem.SongCard -> item.track.title
         is FeedItem.AlbumCard -> item.album.title
@@ -534,7 +573,7 @@ fun MediaCard(
                 .clickable(onClick = onClick)
                 .padding(4.dp),
         ) {
-            ArtImage(
+            artimage(
                 url = artUrl,
                 shape = CircleShape,
                 fallbackIcon = ZIcons.Artist,
@@ -544,7 +583,7 @@ fun MediaCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = glass.ink,
+                color = glassTokens.ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
@@ -554,7 +593,7 @@ fun MediaCard(
             Text(
                 text = subtitle.ifBlank { "Artist" },
                 style = MaterialTheme.typography.bodyMedium,
-                color = glass.inkSecondary,
+                color = glassTokens.inkSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
@@ -569,10 +608,15 @@ fun MediaCard(
                 .clickable(onClick = onClick)
                 .padding(4.dp),
         ) {
-            ArtImage(
+            artimage(
                 url = artUrl,
+                fallbackUrl = fallbackUrl,
                 shape = RoundedCornerShape(14.dp),
-                fallbackIcon = if (item is FeedItem.PlaylistCard) ZIcons.Playlist else ZIcons.Album,
+                fallbackIcon = when (item) {
+                    is FeedItem.PlaylistCard -> ZIcons.Playlist
+                    is FeedItem.SongCard -> ZIcons.Note
+                    else -> ZIcons.Album
+                },
                 modifier = Modifier.size(width - 8.dp),
             )
             Spacer(Modifier.height(9.dp))
@@ -580,7 +624,7 @@ fun MediaCard(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = glass.ink,
+                color = glassTokens.ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
@@ -591,7 +635,7 @@ fun MediaCard(
             Text(
                 text = subtitle.ifBlank { "Music" },
                 style = MaterialTheme.typography.bodyMedium,
-                color = glass.inkSecondary,
+                color = glassTokens.inkSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
@@ -601,16 +645,16 @@ fun MediaCard(
 }
 
 @Composable
-fun AlbumGridCard(album: AlbumSummary, onClick: () -> Unit) {
-    MediaCard(item = FeedItem.AlbumCard(album), onClick = onClick, width = 156.dp)
+fun albumcard(album: AlbumSummary, onClick: () -> Unit) {
+    mediacard(item = FeedItem.AlbumCard(album), onClick = onClick, width = 156.dp)
 }
 
 @Composable
-fun ArtistGridCard(artist: ArtistSummary, onClick: () -> Unit) {
-    MediaCard(item = FeedItem.ArtistCard(artist), onClick = onClick, width = 152.dp)
+fun artistcard(artist: ArtistSummary, onClick: () -> Unit) {
+    mediacard(item = FeedItem.ArtistCard(artist), onClick = onClick, width = 152.dp)
 }
 
 @Composable
-fun PlaylistGridCard(playlist: PlaylistSummary, onClick: () -> Unit) {
-    MediaCard(item = FeedItem.PlaylistCard(playlist), onClick = onClick, width = 156.dp)
+fun playlistcard(playlist: PlaylistSummary, onClick: () -> Unit) {
+    mediacard(item = FeedItem.PlaylistCard(playlist), onClick = onClick, width = 156.dp)
 }

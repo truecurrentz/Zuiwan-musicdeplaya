@@ -1,5 +1,6 @@
 package zuiwan.screen
 
+import app.zuiwan.R
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -7,6 +8,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,7 +32,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -51,9 +52,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -61,14 +64,14 @@ import zuiwan.model.QualityMode
 import zuiwan.model.ThemeChoice
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.ArtImage
-import zuiwan.ui.GlassBox
-import zuiwan.ui.GlassPillButton
-import zuiwan.ui.GlassTopBar
+import zuiwan.ui.artimage
+import zuiwan.ui.glass
+import zuiwan.ui.pillbtn
+import zuiwan.ui.topbar
 import zuiwan.ui.Route
-import zuiwan.ui.ScrollHeaderHost
+import zuiwan.ui.scrollhost
 import zuiwan.ui.ZIcons
-import zuiwan.ui.rememberheaderscroll
+import zuiwan.ui.headerscroll
 import kotlin.math.roundToInt
 
 private enum class SettingsPage(val title: String) {
@@ -117,7 +120,7 @@ fun viewsettings(
     bottomPadding: PaddingValues,
 ) {
     val hub = LocalHub.current
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val scope = rememberCoroutineScope()
 
     val settings by hub.settings.collectAsState()
@@ -131,15 +134,12 @@ fun viewsettings(
     var streamBytes by remember { mutableLongStateOf(initialUsage.first) }
     var downloadBytes by remember { mutableLongStateOf(initialUsage.second) }
 
-    var showLastFm by remember { mutableStateOf(false) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var showCountryDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
-    var lfmUser by remember(session.lastFmUser) { mutableStateOf(session.lastFmUser) }
-    var lfmPass by remember { mutableStateOf("") }
     var statusMsg by remember { mutableStateOf<String?>(null) }
 
-    val headerScroll = rememberheaderscroll()
+    val headerScroll = headerscroll()
 
     BackHandler(enabled = page != SettingsPage.MAIN) {
         page = SettingsPage.MAIN
@@ -172,9 +172,9 @@ fun viewsettings(
     if (showQualityDialog) {
         AlertDialog(
             onDismissRequest = { showQualityDialog = false },
-            containerColor = glass.glassStrong,
-            titleContentColor = glass.ink,
-            textContentColor = glass.ink,
+            containerColor = glassTokens.glassStrong,
+            titleContentColor = glassTokens.ink,
+            textContentColor = glassTokens.ink,
             title = { Text("Streaming Quality") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -183,7 +183,7 @@ fun viewsettings(
                         Triple(QualityMode.AUTO, "Balanced", "Adapts smoothly to connection speed"),
                         Triple(QualityMode.LOW, "Data Saver", "Minimizes mobile data usage"),
                     ).forEach { (mode, title, desc) ->
-                        DialogChoiceRow(
+                        choicerow(
                             title = title,
                             subtitle = desc,
                             selected = settings.quality == mode,
@@ -197,7 +197,7 @@ fun viewsettings(
             },
             confirmButton = {
                 TextButton(onClick = { showQualityDialog = false }) {
-                    Text("Close", color = glass.inkSecondary)
+                    Text("Close", color = glassTokens.inkSecondary)
                 }
             },
         )
@@ -206,14 +206,14 @@ fun viewsettings(
     if (showCountryDialog) {
         AlertDialog(
             onDismissRequest = { showCountryDialog = false },
-            containerColor = glass.glassStrong,
-            titleContentColor = glass.ink,
-            textContentColor = glass.ink,
+            containerColor = glassTokens.glassStrong,
+            titleContentColor = glassTokens.ink,
+            textContentColor = glassTokens.ink,
             title = { Text("Content Country") },
             text = {
                 LazyColumn(modifier = Modifier.height(340.dp)) {
                     items(regionCatalog, key = { it.first }) { (code, label) ->
-                        DialogChoiceRow(
+                        choicerow(
                             title = label,
                             subtitle = code,
                             selected = settings.contentCountry == code,
@@ -231,7 +231,7 @@ fun viewsettings(
             },
             confirmButton = {
                 TextButton(onClick = { showCountryDialog = false }) {
-                    Text("Close", color = glass.inkSecondary)
+                    Text("Close", color = glassTokens.inkSecondary)
                 }
             },
         )
@@ -240,14 +240,14 @@ fun viewsettings(
     if (showLanguageDialog) {
         AlertDialog(
             onDismissRequest = { showLanguageDialog = false },
-            containerColor = glass.glassStrong,
-            titleContentColor = glass.ink,
-            textContentColor = glass.ink,
+            containerColor = glassTokens.glassStrong,
+            titleContentColor = glassTokens.ink,
+            textContentColor = glassTokens.ink,
             title = { Text("Content Language") },
             text = {
                 LazyColumn(modifier = Modifier.height(300.dp)) {
                     items(languageCatalog, key = { it.first }) { (code, label) ->
-                        DialogChoiceRow(
+                        choicerow(
                             title = label,
                             subtitle = code.uppercase(),
                             selected = settings.contentLanguage == code,
@@ -264,77 +264,7 @@ fun viewsettings(
             },
             confirmButton = {
                 TextButton(onClick = { showLanguageDialog = false }) {
-                    Text("Close", color = glass.inkSecondary)
-                }
-            },
-        )
-    }
-
-    if (showLastFm) {
-        AlertDialog(
-            onDismissRequest = { showLastFm = false },
-            containerColor = glass.glassStrong,
-            titleContentColor = glass.ink,
-            textContentColor = glass.ink,
-            title = { Text("Last.fm Scrobbler") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = lfmUser,
-                        onValueChange = { lfmUser = it },
-                        label = { Text("Username") },
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = lfmPass,
-                        onValueChange = { lfmPass = it },
-                        label = { Text("Password") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            hub.scrobbler.loginlastfm(lfmUser.trim(), lfmPass)
-                                .onSuccess { key ->
-                                    hub.store.updatesession {
-                                        it.copy(lastFmUser = lfmUser.trim(), lastFmSession = key, scrobbleEnabled = true)
-                                    }
-                                    statusMsg = "Connected to Last.fm as ${lfmUser.trim()}"
-                                    showLastFm = false
-                                }
-                                .onFailure { err ->
-                                    statusMsg = err.message
-                                    showLastFm = false
-                                }
-                        }
-                    },
-                ) {
-                    Text("Connect", color = glass.accent)
-                }
-            },
-            dismissButton = {
-                Row {
-                    if (session.lastFmSession.isNotBlank()) {
-                        TextButton(
-                            onClick = {
-                                scope.launch {
-                                    hub.store.updatesession {
-                                        it.copy(lastFmUser = "", lastFmSession = "", scrobbleEnabled = false)
-                                    }
-                                }
-                                showLastFm = false
-                            },
-                        ) {
-                            Text("Disconnect", color = glass.danger)
-                        }
-                    }
-                    TextButton(onClick = { showLastFm = false }) {
-                        Text("Cancel", color = glass.inkSecondary)
-                    }
+                    Text("Close", color = glassTokens.inkSecondary)
                 }
             },
         )
@@ -347,11 +277,11 @@ fun viewsettings(
         }
     }
 
-    ScrollHeaderHost(
+    scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         header = {
-            GlassTopBar(
+            topbar(
                 title = page.title,
                 onBack = {
                     if (page != SettingsPage.MAIN) {
@@ -378,7 +308,7 @@ fun viewsettings(
             ) {
                 statusMsg?.let { msg ->
                     item(key = "status_banner") {
-                        GlassBox(
+                        glass(
                             shape = RoundedCornerShape(18.dp),
                             accented = true,
                             onClick = { statusMsg = null },
@@ -395,10 +325,10 @@ fun viewsettings(
                                 Text(
                                     text = msg,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = glass.ink,
+                                    color = glassTokens.ink,
                                     modifier = Modifier.weight(1f),
                                 )
-                                Icon(ZIcons.Close, null, tint = glass.inkSecondary, modifier = Modifier.size(16.dp))
+                                Icon(ZIcons.Close, null, tint = glassTokens.inkSecondary, modifier = Modifier.size(16.dp))
                             }
                         }
                     }
@@ -407,7 +337,7 @@ fun viewsettings(
                 when (currentPage) {
                     SettingsPage.MAIN -> {
                         item(key = "account_hero") {
-                            GlassBox(
+                            glass(
                                 shape = RoundedCornerShape(24.dp),
                                 elevated = true,
                                 contentPadding = PaddingValues(18.dp),
@@ -418,7 +348,7 @@ fun viewsettings(
                                 if (session.active) {
                                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            ArtImage(
+                                            artimage(
                                                 url = session.accountAvatar,
                                                 shape = CircleShape,
                                                 fallbackIcon = ZIcons.User,
@@ -429,21 +359,21 @@ fun viewsettings(
                                                 Text(
                                                     text = session.accountName.ifBlank { "YouTube Music" },
                                                     style = MaterialTheme.typography.titleLarge,
-                                                    color = glass.ink,
+                                                    color = glassTokens.ink,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis,
                                                 )
                                                 Text(
                                                     text = session.accountHandle.ifBlank { session.accountEmail.ifBlank { "Signed in" } },
                                                     style = MaterialTheme.typography.bodyMedium,
-                                                    color = glass.inkSecondary,
+                                                    color = glassTokens.inkSecondary,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis,
                                                 )
                                             }
                                         }
                                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            GlassPillButton(
+                                            pillbtn(
                                                 text = "Sync Library",
                                                 icon = ZIcons.Refresh,
                                                 primary = true,
@@ -453,7 +383,7 @@ fun viewsettings(
                                                 },
                                                 modifier = Modifier.weight(1f),
                                             )
-                                            GlassPillButton(
+                                            pillbtn(
                                                 text = "Sign Out",
                                                 icon = ZIcons.Close,
                                                 onClick = { hub.logout() },
@@ -471,12 +401,12 @@ fun viewsettings(
                                             modifier = Modifier
                                                 .size(50.dp)
                                                 .clip(CircleShape)
-                                                .background(glass.accentSoft),
+                                                .background(glassTokens.accentSoft),
                                         ) {
                                             Icon(
                                                 imageVector = ZIcons.User,
                                                 contentDescription = null,
-                                                tint = glass.accent,
+                                                tint = glassTokens.accent,
                                                 modifier = Modifier.size(24.dp),
                                             )
                                         }
@@ -486,16 +416,16 @@ fun viewsettings(
                                                 text = "YouTube Music",
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = glass.ink,
+                                                color = glassTokens.ink,
                                             )
                                             Text(
                                                 text = "Sign in to sync playlists, likes & mixes",
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = glass.inkSecondary,
+                                                color = glassTokens.inkSecondary,
                                             )
                                         }
                                         Spacer(Modifier.width(10.dp))
-                                        GlassPillButton(
+                                        pillbtn(
                                             text = "Sign In",
                                             icon = ZIcons.User,
                                             primary = true,
@@ -507,18 +437,18 @@ fun viewsettings(
                         }
 
                         item(key = "group_experience") {
-                            SettingsGroupTitle("Experience")
-                            SettingsGroupColumn {
+                            grouptitle("Experience")
+                            groupbox {
                                 val themeName = if (settings.theme == ThemeChoice.DARK) "Dark" else "White"
                                 val blurDesc = if (settings.blurEnabled) "Frosted blur" else "Minimal glass"
-                                SettingsNavItem(
+                                navitem(
                                     icon = ZIcons.Palette,
                                     title = "Appearance",
                                     subtitle = "$themeName theme - $blurDesc",
                                     position = GroupPos.TOP,
                                     onClick = { page = SettingsPage.APPEARANCE },
                                 )
-                                SettingsNavItem(
+                                navitem(
                                     icon = ZIcons.Waveform,
                                     title = "Player & Audio",
                                     subtitle = "${qualitylabel(settings.quality)} quality - ${if (eqProfile.enabled) eqProfile.name else "Parametric EQ"}",
@@ -526,10 +456,10 @@ fun viewsettings(
                                     onClick = { page = SettingsPage.AUDIO },
                                 )
                                 val countryLabel = regionCatalog.firstOrNull { it.first == settings.contentCountry }?.second ?: settings.contentCountry
-                                SettingsNavItem(
+                                navitem(
                                     icon = ZIcons.Language,
                                     title = "Content & Privacy",
-                                    subtitle = "$countryLabel - Lyrics & Last.fm",
+                                    subtitle = "$countryLabel - Lyrics & History",
                                     position = GroupPos.BOTTOM,
                                     onClick = { page = SettingsPage.CONTENT },
                                 )
@@ -537,9 +467,9 @@ fun viewsettings(
                         }
 
                         item(key = "group_system") {
-                            SettingsGroupTitle("Data & System")
-                            SettingsGroupColumn {
-                                SettingsNavItem(
+                            grouptitle("Data & System")
+                            groupbox {
+                                navitem(
                                     icon = ZIcons.Storage,
                                     title = "Storage & Backup",
                                     subtitle = "${formatbytes(streamBytes + downloadBytes)} used - Backup & restore",
@@ -551,14 +481,14 @@ fun viewsettings(
                                         page = SettingsPage.STORAGE
                                     },
                                 )
-                                SettingsNavItem(
+                                navitem(
                                     icon = ZIcons.Equalizer,
                                     title = "Parametric Equalizer",
                                     subtitle = if (eqProfile.enabled) "Active: ${eqProfile.name}" else "10-band studio DSP",
                                     position = GroupPos.MIDDLE,
                                     onClick = { onNavigate(Route.Equalizer) },
                                 )
-                                SettingsNavItem(
+                                navitem(
                                     icon = ZIcons.Info,
                                     title = "About Zuiwan",
                                     subtitle = "Version 1.0.0",
@@ -571,14 +501,14 @@ fun viewsettings(
 
                     SettingsPage.APPEARANCE -> {
                         item(key = "theme_cards") {
-                            SettingsGroupTitle("Theme")
+                            grouptitle("Theme")
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 18.dp, vertical = 4.dp),
                             ) {
-                                ThemePreviewCard(
+                                themecard(
                                     title = "Dark",
                                     subtitle = "Deep obsidian glass",
                                     icon = ZIcons.Moon,
@@ -591,7 +521,7 @@ fun viewsettings(
                                     },
                                     modifier = Modifier.weight(1f),
                                 )
-                                ThemePreviewCard(
+                                themecard(
                                     title = "White",
                                     subtitle = "Crisp daylight glass",
                                     icon = ZIcons.Sun,
@@ -608,9 +538,9 @@ fun viewsettings(
                         }
 
                         item(key = "surface_options") {
-                            SettingsGroupTitle("Surfaces & Color")
-                            SettingsGroupColumn {
-                                SettingsSwitchItem(
+                            grouptitle("Surfaces & Color")
+                            groupbox {
+                                switchitem(
                                     icon = ZIcons.Sparkles,
                                     title = "Frosted Glass Blur",
                                     subtitle = "Real-time backdrop blur on bars, dock, and player",
@@ -620,7 +550,7 @@ fun viewsettings(
                                         scope.launch { hub.store.updatesettings { it.copy(blurEnabled = v) } }
                                     },
                                 )
-                                SettingsSwitchItem(
+                                switchitem(
                                     icon = ZIcons.Palette,
                                     title = "Dynamic Artwork Accent",
                                     subtitle = "Blend interface highlights from the playing cover art",
@@ -636,16 +566,16 @@ fun viewsettings(
 
                     SettingsPage.AUDIO -> {
                         item(key = "audio_quality") {
-                            SettingsGroupTitle("Streaming & DSP")
-                            SettingsGroupColumn {
-                                SettingsNavItem(
+                            grouptitle("Streaming & DSP")
+                            groupbox {
+                                navitem(
                                     icon = ZIcons.Waveform,
                                     title = "Streaming Quality",
                                     subtitle = qualitylabel(settings.quality),
                                     position = GroupPos.TOP,
                                     onClick = { showQualityDialog = true },
                                 )
-                                SettingsNavItem(
+                                navitem(
                                     icon = ZIcons.Equalizer,
                                     title = "Parametric Equalizer",
                                     subtitle = if (eqProfile.enabled) "Active preset: ${eqProfile.name}" else "Tap to configure 10-band EQ",
@@ -656,9 +586,9 @@ fun viewsettings(
                         }
 
                         item(key = "playback_switches") {
-                            SettingsGroupTitle("Playback Behavior")
-                            SettingsGroupColumn {
-                                SettingsSwitchItem(
+                            grouptitle("Playback Behavior")
+                            groupbox {
+                                switchitem(
                                     icon = ZIcons.VolumeHigh,
                                     title = "Audio Normalization",
                                     subtitle = "Balance loudness evenly across songs",
@@ -668,7 +598,7 @@ fun viewsettings(
                                         scope.launch { hub.store.updatesettings { it.copy(normalizeAudio = v) } }
                                     },
                                 )
-                                SettingsSwitchItem(
+                                switchitem(
                                     icon = ZIcons.Speed,
                                     title = "Skip Silence",
                                     subtitle = "Trim silent pauses at the start and end of tracks",
@@ -678,17 +608,17 @@ fun viewsettings(
                                         scope.launch { hub.store.updatesettings { it.copy(skipSilence = v) } }
                                     },
                                 )
-                                SettingsSwitchItem(
+                                switchitem(
                                     icon = ZIcons.Radio,
                                     title = "Auto Radio Queue",
                                     subtitle = "Continue with similar tracks when the queue finishes",
-                                    checked = settings.autoQueue,
+                                    checked = settings.autoRadio,
                                     position = GroupPos.MIDDLE,
                                     onToggle = { v ->
-                                        scope.launch { hub.store.updatesettings { it.copy(autoQueue = v) } }
+                                        scope.launch { hub.store.updatesettings { it.copy(autoRadio = v) } }
                                     },
                                 )
-                                SettingsSwitchItem(
+                                switchitem(
                                     icon = ZIcons.Queue,
                                     title = "Persistent Queue",
                                     subtitle = "Remember queue and playback position across restarts",
@@ -702,8 +632,8 @@ fun viewsettings(
                         }
 
                         item(key = "crossfade_card") {
-                            SettingsGroupTitle("Transitions")
-                            GlassBox(
+                            grouptitle("Transitions")
+                            glass(
                                 shape = RoundedCornerShape(24.dp),
                                 elevated = true,
                                 contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
@@ -718,18 +648,18 @@ fun viewsettings(
                                         modifier = Modifier.fillMaxWidth(),
                                     ) {
                                         Column {
-                                            Text("Crossfade", style = MaterialTheme.typography.titleMedium, color = glass.ink)
+                                            Text("Crossfade", style = MaterialTheme.typography.titleMedium, color = glassTokens.ink)
                                             Text(
                                                 text = "Smoothly overlap ending and upcoming songs",
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = glass.inkSecondary,
+                                                color = glassTokens.inkSecondary,
                                             )
                                         }
                                         Text(
                                             text = if (settings.crossfadeSec == 0) "Off" else "${settings.crossfadeSec}s",
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = glass.accent,
+                                            color = glassTokens.accent,
                                         )
                                     }
                                     Spacer(Modifier.height(6.dp))
@@ -741,9 +671,9 @@ fun viewsettings(
                                         },
                                         valueRange = 0f..12f,
                                         colors = SliderDefaults.colors(
-                                            thumbColor = glass.accent,
-                                            activeTrackColor = glass.accent,
-                                            inactiveTrackColor = glass.glassBorder,
+                                            thumbColor = glassTokens.accent,
+                                            activeTrackColor = glassTokens.accent,
+                                            inactiveTrackColor = glassTokens.glassBorder,
                                         ),
                                     )
                                 }
@@ -753,18 +683,18 @@ fun viewsettings(
 
                     SettingsPage.CONTENT -> {
                         item(key = "catalog_group") {
-                            SettingsGroupTitle("Catalog & Region")
+                            grouptitle("Catalog & Region")
                             val countryLabel = regionCatalog.firstOrNull { it.first == settings.contentCountry }?.second ?: settings.contentCountry
                             val langLabel = languageCatalog.firstOrNull { it.first == settings.contentLanguage }?.second ?: settings.contentLanguage
-                            SettingsGroupColumn {
-                                SettingsNavItem(
+                            groupbox {
+                                navitem(
                                     icon = ZIcons.Globe,
                                     title = "Content Country",
                                     subtitle = "$countryLabel (${settings.contentCountry})",
                                     position = GroupPos.TOP,
                                     onClick = { showCountryDialog = true },
                                 )
-                                SettingsNavItem(
+                                navitem(
                                     icon = ZIcons.Language,
                                     title = "Content Language",
                                     subtitle = langLabel,
@@ -775,9 +705,9 @@ fun viewsettings(
                         }
 
                         item(key = "lyrics_privacy_group") {
-                            SettingsGroupTitle("Lyrics & History")
-                            SettingsGroupColumn {
-                                SettingsSwitchItem(
+                            grouptitle("Lyrics & History")
+                            groupbox {
+                                switchitem(
                                     icon = ZIcons.Lyrics,
                                     title = "Romanize Lyrics",
                                     subtitle = "Show pronunciation for Japanese, Korean, Chinese & Cyrillic",
@@ -787,7 +717,7 @@ fun viewsettings(
                                         scope.launch { hub.store.updatesettings { it.copy(romanizeLyrics = v) } }
                                     },
                                 )
-                                SettingsSwitchItem(
+                                switchitem(
                                     icon = ZIcons.History,
                                     title = "Pause Listening History",
                                     subtitle = "Stop recording local playback history and stats",
@@ -799,33 +729,16 @@ fun viewsettings(
                                 )
                             }
                         }
-
-                        item(key = "scrobble_group") {
-                            SettingsGroupTitle("Scrobbling")
-                            SettingsGroupColumn {
-                                SettingsNavItem(
-                                    icon = ZIcons.Radio,
-                                    title = "Last.fm",
-                                    subtitle = if (session.lastFmSession.isNotBlank()) {
-                                        "Connected as ${session.lastFmUser}"
-                                    } else {
-                                        "Connect account to scrobble plays"
-                                    },
-                                    position = GroupPos.SINGLE,
-                                    onClick = { showLastFm = true },
-                                )
-                            }
-                        }
                     }
 
                     SettingsPage.STORAGE -> {
                         item(key = "storage_meter") {
-                            SettingsGroupTitle("Disk Usage")
+                            grouptitle("Disk Usage")
                             val totalBytes = (streamBytes + downloadBytes).coerceAtLeast(1L)
                             val dlFrac = (downloadBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
                             val cacheFrac = (streamBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
 
-                            GlassBox(
+                            glass(
                                 shape = RoundedCornerShape(24.dp),
                                 elevated = true,
                                 contentPadding = PaddingValues(18.dp),
@@ -844,12 +757,12 @@ fun viewsettings(
                                                 text = formatbytes(streamBytes + downloadBytes),
                                                 style = MaterialTheme.typography.headlineMedium,
                                                 fontWeight = FontWeight.Bold,
-                                                color = glass.ink,
+                                                color = glassTokens.ink,
                                             )
                                             Text(
                                                 text = "${downloadedTracks.size} offline songs stored",
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = glass.inkSecondary,
+                                                color = glassTokens.inkSecondary,
                                             )
                                         }
                                     }
@@ -859,14 +772,14 @@ fun viewsettings(
                                             .fillMaxWidth()
                                             .height(10.dp)
                                             .clip(CircleShape)
-                                            .background(glass.glassFill),
+                                            .background(glassTokens.glassFill),
                                     ) {
                                         if (downloadBytes > 0L) {
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxHeight()
                                                     .fillMaxWidth(dlFrac.coerceAtLeast(0.06f))
-                                                    .background(glass.accent),
+                                                    .background(glassTokens.accent),
                                             )
                                         }
                                         if (streamBytes > 0L) {
@@ -874,7 +787,7 @@ fun viewsettings(
                                                 modifier = Modifier
                                                     .fillMaxHeight()
                                                     .fillMaxWidth(cacheFrac.coerceAtLeast(0.06f))
-                                                    .background(glass.accentSecondary),
+                                                    .background(glassTokens.accentSecondary),
                                             )
                                         }
                                     }
@@ -883,23 +796,23 @@ fun viewsettings(
                                         horizontalArrangement = Arrangement.spacedBy(18.dp),
                                         modifier = Modifier.fillMaxWidth(),
                                     ) {
-                                        LegendDot(glass.accent, "Downloads (${formatbytes(downloadBytes)})")
-                                        LegendDot(glass.accentSecondary, "Cache (${formatbytes(streamBytes)})")
+                                        legend(glassTokens.accent, "Downloads (${formatbytes(downloadBytes)})")
+                                        legend(glassTokens.accentSecondary, "Cache (${formatbytes(streamBytes)})")
                                     }
                                 }
                             }
                         }
 
                         item(key = "cache_actions") {
-                            SettingsGroupTitle("Maintenance")
-                            SettingsGroupColumn {
-                                SettingsNavItem(
+                            grouptitle("Maintenance")
+                            groupbox {
+                                navitem(
                                     icon = ZIcons.Trash,
                                     title = "Clear Stream Cache",
                                     subtitle = "Free ${formatbytes(streamBytes)} of temporary cached audio",
                                     position = GroupPos.SINGLE,
                                     onClick = {
-                                        hub.vault.clearstreamcache()
+                                        hub.vault.clearcache()
                                         streamBytes = 0L
                                         statusMsg = "Stream cache cleared"
                                     },
@@ -908,16 +821,16 @@ fun viewsettings(
                         }
 
                         item(key = "backup_group") {
-                            SettingsGroupTitle("Backup & Restore")
-                            SettingsGroupColumn {
-                                SettingsNavItem(
+                            grouptitle("Backup & Restore")
+                            groupbox {
+                                navitem(
                                     icon = ZIcons.Download,
                                     title = "Create Backup",
                                     subtitle = "Export playlists, likes, history & settings (.zip)",
                                     position = GroupPos.TOP,
                                     onClick = { exportBackupLauncher.launch("zuiwan-backup.zip") },
                                 )
-                                SettingsNavItem(
+                                navitem(
                                     icon = ZIcons.Backup,
                                     title = "Restore Backup",
                                     subtitle = "Import a saved Zuiwan archive (.zip)",
@@ -930,7 +843,7 @@ fun viewsettings(
 
                     SettingsPage.ABOUT -> {
                         item(key = "about_hero") {
-                            GlassBox(
+                            glass(
                                 shape = RoundedCornerShape(28.dp),
                                 elevated = true,
                                 contentPadding = PaddingValues(vertical = 32.dp, horizontal = 24.dp),
@@ -942,30 +855,31 @@ fun viewsettings(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
-                                    Icon(
-                                        imageVector = ZIcons.Wordmark,
+                                    Image(
+                                        painter = painterResource(R.drawable.wordmark),
                                         contentDescription = "Zuiwan",
-                                        tint = glass.ink,
-                                        modifier = Modifier.height(34.dp),
+                                        contentScale = ContentScale.Fit,
+                                        colorFilter = ColorFilter.tint(glassTokens.ink),
+                                        modifier = Modifier.height(32.dp),
                                     )
                                     Spacer(Modifier.height(12.dp))
                                     Box(
                                         modifier = Modifier
                                             .clip(CircleShape)
-                                            .background(glass.accentSoft)
+                                            .background(glassTokens.accentSoft)
                                             .padding(horizontal = 14.dp, vertical = 5.dp),
                                     ) {
                                         Text(
                                             text = "Version 1.0.0",
                                             style = MaterialTheme.typography.labelLarge,
-                                            color = glass.accent,
+                                            color = glassTokens.accent,
                                         )
                                     }
                                     Spacer(Modifier.height(14.dp))
                                     Text(
                                         text = "Refined YouTube Music streaming client crafted with Dark & White frosted glass, synced word lyrics, offline vault, and 10-band studio DSP.",
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = glass.inkSecondary,
+                                        color = glassTokens.inkSecondary,
                                     )
                                 }
                             }
@@ -992,19 +906,19 @@ private fun groupshape(pos: GroupPos): RoundedCornerShape = when (pos) {
 }
 
 @Composable
-private fun SettingsGroupTitle(text: String) {
-    val glass = LocalGlass.current
+private fun grouptitle(text: String) {
+    val glassTokens = LocalGlass.current
     Text(
         text = text,
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.SemiBold,
-        color = glass.accent,
+        color = glassTokens.accent,
         modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 8.dp),
     )
 }
 
 @Composable
-private fun SettingsGroupColumn(content: @Composable () -> Unit) {
+private fun groupbox(content: @Composable () -> Unit) {
     Column(
         verticalArrangement = Arrangement.spacedBy(2.dp),
         modifier = Modifier
@@ -1016,15 +930,15 @@ private fun SettingsGroupColumn(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SettingsNavItem(
+private fun navitem(
     icon: ImageVector,
     title: String,
     subtitle: String,
     position: GroupPos,
     onClick: () -> Unit,
 ) {
-    val glass = LocalGlass.current
-    GlassBox(
+    val glassTokens = LocalGlass.current
+    glass(
         shape = groupshape(position),
         elevated = true,
         onClick = onClick,
@@ -1040,12 +954,12 @@ private fun SettingsNavItem(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(glass.accentSoft),
+                    .background(glassTokens.accentSoft),
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = glass.accent,
+                    tint = glassTokens.accent,
                     modifier = Modifier.size(20.dp),
                 )
             }
@@ -1055,12 +969,12 @@ private fun SettingsNavItem(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = glass.ink,
+                    color = glassTokens.ink,
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = glass.inkSecondary,
+                    color = glassTokens.inkSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1069,7 +983,7 @@ private fun SettingsNavItem(
             Icon(
                 imageVector = ZIcons.ChevronRight,
                 contentDescription = null,
-                tint = glass.inkMuted,
+                tint = glassTokens.inkMuted,
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -1077,7 +991,7 @@ private fun SettingsNavItem(
 }
 
 @Composable
-private fun SettingsSwitchItem(
+private fun switchitem(
     icon: ImageVector,
     title: String,
     subtitle: String,
@@ -1085,8 +999,8 @@ private fun SettingsSwitchItem(
     position: GroupPos,
     onToggle: (Boolean) -> Unit,
 ) {
-    val glass = LocalGlass.current
-    GlassBox(
+    val glassTokens = LocalGlass.current
+    glass(
         shape = groupshape(position),
         elevated = true,
         onClick = { onToggle(!checked) },
@@ -1102,12 +1016,12 @@ private fun SettingsSwitchItem(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(glass.accentSoft),
+                    .background(glassTokens.accentSoft),
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = glass.accent,
+                    tint = glassTokens.accent,
                     modifier = Modifier.size(20.dp),
                 )
             }
@@ -1121,20 +1035,20 @@ private fun SettingsSwitchItem(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = glass.ink,
+                    color = glassTokens.ink,
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = glass.inkSecondary,
+                    color = glassTokens.inkSecondary,
                 )
             }
             Switch(
                 checked = checked,
                 onCheckedChange = onToggle,
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = glass.onAccent,
-                    checkedTrackColor = glass.accent,
+                    checkedThumbColor = glassTokens.onAccent,
+                    checkedTrackColor = glassTokens.accent,
                 ),
             )
         }
@@ -1142,7 +1056,7 @@ private fun SettingsSwitchItem(
 }
 
 @Composable
-private fun ThemePreviewCard(
+private fun themecard(
     title: String,
     subtitle: String,
     icon: ImageVector,
@@ -1153,8 +1067,8 @@ private fun ThemePreviewCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val glass = LocalGlass.current
-    GlassBox(
+    val glassTokens = LocalGlass.current
+    glass(
         shape = RoundedCornerShape(22.dp),
         elevated = !selected,
         accented = selected,
@@ -1180,7 +1094,7 @@ private fun ThemePreviewCard(
                             modifier = Modifier
                                 .size(18.dp)
                                 .clip(RoundedCornerShape(5.dp))
-                                .background(glass.accent),
+                                .background(glassTokens.accent),
                         )
                         Box(
                             modifier = Modifier
@@ -1213,20 +1127,20 @@ private fun ThemePreviewCard(
                         Icon(
                             imageVector = icon,
                             contentDescription = null,
-                            tint = if (selected) glass.accent else glass.inkSecondary,
+                            tint = if (selected) glassTokens.accent else glassTokens.inkSecondary,
                             modifier = Modifier.size(16.dp),
                         )
                         Text(
                             text = title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = glass.ink,
+                            color = glassTokens.ink,
                         )
                     }
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = glass.inkSecondary,
+                        color = glassTokens.inkSecondary,
                         maxLines = 1,
                     )
                 }
@@ -1236,12 +1150,12 @@ private fun ThemePreviewCard(
                         modifier = Modifier
                             .size(24.dp)
                             .clip(CircleShape)
-                            .background(glass.accent),
+                            .background(glassTokens.accent),
                     ) {
                         Icon(
                             imageVector = ZIcons.Check,
                             contentDescription = null,
-                            tint = glass.onAccent,
+                            tint = glassTokens.onAccent,
                             modifier = Modifier.size(14.dp),
                         )
                     }
@@ -1252,19 +1166,19 @@ private fun ThemePreviewCard(
 }
 
 @Composable
-private fun DialogChoiceRow(
+private fun choicerow(
     title: String,
     subtitle: String,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) glass.accentSoft else Color.Transparent)
+            .background(if (selected) glassTokens.accentSoft else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
@@ -1273,19 +1187,19 @@ private fun DialogChoiceRow(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                color = if (selected) glass.accent else glass.ink,
+                color = if (selected) glassTokens.accent else glassTokens.ink,
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = glass.inkSecondary,
+                color = glassTokens.inkSecondary,
             )
         }
         if (selected) {
             Icon(
                 imageVector = ZIcons.Check,
                 contentDescription = null,
-                tint = glass.accent,
+                tint = glassTokens.accent,
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -1293,8 +1207,8 @@ private fun DialogChoiceRow(
 }
 
 @Composable
-private fun LegendDot(color: Color, label: String) {
-    val glass = LocalGlass.current
+private fun legend(color: Color, label: String) {
+    val glassTokens = LocalGlass.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1308,7 +1222,7 @@ private fun LegendDot(color: Color, label: String) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = glass.inkSecondary,
+            color = glassTokens.inkSecondary,
         )
     }
 }

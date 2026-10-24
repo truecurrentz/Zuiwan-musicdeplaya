@@ -96,13 +96,13 @@ class NavStack {
 }
 
 @Composable
-fun FloatingGlassDock(
+fun floatingbar(
     activeTab: MainTab,
     onSelect: (MainTab) -> Unit,
     connectedAbove: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val glass = LocalGlass.current
+    val glassTokens = LocalGlass.current
     val dockShape = if (connectedAbove) {
         RoundedCornerShape(
             topStart = 12.dp,
@@ -121,11 +121,10 @@ fun FloatingGlassDock(
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        GlassBox(
+        glass(
             shape = dockShape,
             strong = true,
             frosted = true,
-            elevation = 16.dp,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
             modifier = Modifier
                 .widthIn(max = 520.dp)
@@ -139,17 +138,17 @@ fun FloatingGlassDock(
                 MainTab.entries.forEach { tab ->
                     val selected = tab == activeTab
                     val pillColor by animateColorAsState(
-                        targetValue = if (selected) glass.accentSoft else Color.Transparent,
+                        targetValue = if (selected) glassTokens.accentSoft else Color.Transparent,
                         animationSpec = tween(220),
                         label = "dockPill",
                     )
                     val iconTint by animateColorAsState(
-                        targetValue = if (selected) glass.accent else glass.ink,
+                        targetValue = if (selected) glassTokens.accent else glassTokens.ink,
                         animationSpec = tween(220),
                         label = "dockIcon",
                     )
                     val labelTint by animateColorAsState(
-                        targetValue = if (selected) glass.accent else glass.inkSecondary,
+                        targetValue = if (selected) glassTokens.accent else glassTokens.inkSecondary,
                         animationSpec = tween(220),
                         label = "dockLabel",
                     )
