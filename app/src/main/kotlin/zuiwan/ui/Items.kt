@@ -4,15 +4,15 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -115,8 +116,7 @@ fun ArtImage(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .clip(shape)
-            .background(glass.glassElevated)
-            .border(0.75.dp, glass.glassBorder, shape),
+            .background(glass.glassElevated),
     ) {
         if (!url.isNullOrBlank()) {
             AsyncImage(
@@ -144,6 +144,84 @@ fun ArtImage(
                     color = Color.White,
                     modifier = Modifier.height(18.dp),
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun PlaylistThumb(
+    thumbnails: List<String>,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(14.dp),
+    fallbackIcon: ImageVector = ZIcons.Playlist,
+    iconTint: Color? = null,
+    preferIcon: Boolean = false,
+) {
+    val glass = LocalGlass.current
+    val clean = remember(thumbnails) { thumbnails.filter { it.isNotBlank() }.distinct() }
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        glass.accent.copy(alpha = if (glass.isDark) 0.22f else 0.14f),
+                        glass.accentSecondary.copy(alpha = if (glass.isDark) 0.14f else 0.09f),
+                    ),
+                ),
+            ),
+    ) {
+        when {
+            preferIcon || clean.isEmpty() -> {
+                Icon(
+                    imageVector = fallbackIcon,
+                    contentDescription = null,
+                    tint = iconTint ?: glass.accent,
+                    modifier = Modifier.fillMaxSize(0.44f),
+                )
+            }
+            clean.size < 4 -> {
+                AsyncImage(
+                    model = clean[0],
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            else -> {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        AsyncImage(
+                            model = clean[0],
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                        AsyncImage(
+                            model = clean[1],
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                    }
+                    Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        AsyncImage(
+                            model = clean[2],
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                        AsyncImage(
+                            model = clean[3],
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                    }
+                }
             }
         }
     }
@@ -189,9 +267,8 @@ fun SectionHeader(
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
                     .background(glass.glassElevated)
-                    .border(0.8.dp, glass.glassBorder, RoundedCornerShape(999.dp))
                     .clickable(onClick = onAction)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 13.dp, vertical = 6.dp),
             ) {
                 Text(
                     text = actionLabel,
@@ -223,20 +300,11 @@ fun SongRow(
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val glass = LocalGlass.current
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(14.dp)
     val rowBg = when {
         playing -> glass.accentSoft
         cardBackground -> glass.glassFill
         else -> Color.Transparent
-    }
-    val borderMod = if (playing || cardBackground) {
-        Modifier.border(
-            width = 0.8.dp,
-            color = if (playing) glass.accent.copy(alpha = 0.36f) else glass.glassBorder,
-            shape = shape,
-        )
-    } else {
-        Modifier
     }
 
     Row(
@@ -245,9 +313,8 @@ fun SongRow(
             .fillMaxWidth()
             .clip(shape)
             .background(rowBg)
-            .then(borderMod)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 9.dp),
     ) {
         if (indexNumber != null) {
             Box(
@@ -272,7 +339,7 @@ fun SongRow(
         } else {
             ArtImage(
                 url = track.artwork,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(11.dp),
                 playing = playing,
                 modifier = Modifier.size(50.dp),
             )
@@ -298,7 +365,6 @@ fun SongRow(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(glass.glassElevated)
-                            .border(0.6.dp, glass.glassBorder, RoundedCornerShape(4.dp))
                             .padding(horizontal = 4.dp, vertical = 1.dp),
                     ) {
                         Text(
@@ -309,7 +375,7 @@ fun SongRow(
                     }
                 }
             }
-            Spacer(Modifier.height(3.dp))
+            Spacer(Modifier.height(2.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -464,17 +530,17 @@ fun MediaCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .width(width)
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .clickable(onClick = onClick)
-                .padding(6.dp),
+                .padding(4.dp),
         ) {
             ArtImage(
                 url = artUrl,
                 shape = CircleShape,
                 fallbackIcon = ZIcons.Artist,
-                modifier = Modifier.size(width - 16.dp),
+                modifier = Modifier.size(width - 12.dp),
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(9.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
@@ -496,45 +562,47 @@ fun MediaCard(
             )
         }
     } else {
-        GlassBox(
-            shape = RoundedCornerShape(20.dp),
-            onClick = onClick,
-            contentPadding = PaddingValues(10.dp),
-            modifier = Modifier.width(width),
+        Column(
+            modifier = Modifier
+                .width(width)
+                .clip(RoundedCornerShape(16.dp))
+                .clickable(onClick = onClick)
+                .padding(4.dp),
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                ArtImage(
-                    url = artUrl,
-                    shape = RoundedCornerShape(14.dp),
-                    fallbackIcon = ZIcons.Album,
-                    modifier = Modifier.size(width - 20.dp),
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = glass.ink,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = subtitle.ifBlank { "Music" },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = glass.inkSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            ArtImage(
+                url = artUrl,
+                shape = RoundedCornerShape(14.dp),
+                fallbackIcon = if (item is FeedItem.PlaylistCard) ZIcons.Playlist else ZIcons.Album,
+                modifier = Modifier.size(width - 8.dp),
+            )
+            Spacer(Modifier.height(9.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = glass.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .basicMarquee(),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subtitle.ifBlank { "Music" },
+                style = MaterialTheme.typography.bodyMedium,
+                color = glass.inkSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
 
 @Composable
 fun AlbumGridCard(album: AlbumSummary, onClick: () -> Unit) {
-    MediaCard(item = FeedItem.AlbumCard(album), onClick = onClick, width = 160.dp)
+    MediaCard(item = FeedItem.AlbumCard(album), onClick = onClick, width = 156.dp)
 }
 
 @Composable
@@ -544,5 +612,5 @@ fun ArtistGridCard(artist: ArtistSummary, onClick: () -> Unit) {
 
 @Composable
 fun PlaylistGridCard(playlist: PlaylistSummary, onClick: () -> Unit) {
-    MediaCard(item = FeedItem.PlaylistCard(playlist), onClick = onClick, width = 160.dp)
+    MediaCard(item = FeedItem.PlaylistCard(playlist), onClick = onClick, width = 156.dp)
 }

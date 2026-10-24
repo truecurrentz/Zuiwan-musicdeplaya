@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -24,7 +24,9 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -42,6 +44,8 @@ import zuiwan.theme.LocalGlass
 import zuiwan.ui.GlassBox
 import zuiwan.ui.GlassChip
 import zuiwan.ui.GlassTopBar
+import zuiwan.ui.ScrollHeaderHost
+import zuiwan.ui.rememberheaderscroll
 import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.pow
@@ -132,145 +136,162 @@ fun viewequalizer(
     val glass = LocalGlass.current
     val profile by hub.eq.collectAsState()
 
-    LazyColumn(
-        contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 28.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        item(key = "top") {
-            GlassTopBar(title = "Parametric EQ", onBack = onBack) {
-                Switch(
-                    checked = profile.enabled,
-                    onCheckedChange = { enabled ->
-                        hub.pilot.seteq(profile.copy(enabled = enabled))
-                    },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = glass.onAccent,
-                        checkedTrackColor = glass.accent,
-                    ),
-                )
-            }
+    val headerScroll = rememberheaderscroll()
+    val listState = rememberLazyListState()
+    val lifted by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 12
         }
+    }
 
-        item(key = "presets") {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 18.dp, vertical = 6.dp),
-            ) {
-                studioPresets.forEach { preset ->
-                    GlassChip(
-                        label = preset.name,
-                        selected = profile.id == preset.id,
-                        onClick = {
-                            hub.pilot.seteq(preset.copy(enabled = true))
+    ScrollHeaderHost(
+        scroll = headerScroll,
+        lifted = lifted,
+        header = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                GlassTopBar(title = "Parametric EQ", onBack = onBack) {
+                    Switch(
+                        checked = profile.enabled,
+                        onCheckedChange = { enabled ->
+                            hub.pilot.seteq(profile.copy(enabled = enabled))
                         },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = glass.onAccent,
+                            checkedTrackColor = glass.accent,
+                        ),
                     )
                 }
-            }
-        }
-
-        item(key = "curve") {
-            GlassBox(
-                shape = RoundedCornerShape(22.dp),
-                elevated = true,
-                contentPadding = PaddingValues(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 10.dp),
-            ) {
-                EqResponseCanvas(profile = profile)
-            }
-        }
-
-        item(key = "preamp") {
-            GlassBox(
-                shape = RoundedCornerShape(18.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 6.dp),
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Preamp Gain", style = MaterialTheme.typography.titleMedium, color = glass.ink)
-                        Text(
-                            text = "%+.1f dB".format(profile.preampDb),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = glass.accent,
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(start = 18.dp, end = 18.dp, bottom = 8.dp),
+                ) {
+                    studioPresets.forEach { preset ->
+                        GlassChip(
+                            label = preset.name,
+                            selected = profile.id == preset.id,
+                            onClick = {
+                                hub.pilot.seteq(preset.copy(enabled = true))
+                            },
                         )
                     }
-                    Slider(
-                        value = profile.preampDb.toFloat(),
-                        onValueChange = { next ->
-                            val snapped = (next * 2f).roundToInt() / 2.0
-                            hub.pilot.seteq(profile.copy(id = "custom", name = "Custom", enabled = true, preampDb = snapped))
-                        },
-                        valueRange = -12f..12f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = glass.accent,
-                            activeTrackColor = glass.accent,
-                            inactiveTrackColor = glass.glassBorder,
-                        ),
-                    )
                 }
             }
-        }
-
-        itemsIndexed(profile.bands) { idx, band ->
-            val freqLabel = if (band.frequency >= 1000.0) {
-                "${(band.frequency / 1000.0).toInt()} kHz"
-            } else {
-                "${band.frequency.toInt()} Hz"
-            }
-            GlassBox(
-                shape = RoundedCornerShape(16.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 4.dp),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
+        },
+    ) { topPad ->
+        LazyColumn(
+            state = listState,
+            contentPadding = PaddingValues(
+                top = topPad + 6.dp,
+                bottom = bottomPadding.calculateBottomPadding() + 28.dp,
+            ),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            item(key = "curve") {
+                GlassBox(
+                    shape = RoundedCornerShape(22.dp),
+                    elevated = true,
+                    contentPadding = PaddingValues(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
                 ) {
-                    Column(modifier = Modifier.width(64.dp)) {
-                        Text(freqLabel, style = MaterialTheme.typography.titleSmall, color = glass.ink)
-                        Text(band.kind.name, style = MaterialTheme.typography.labelSmall, color = glass.inkMuted)
-                    }
-                    Slider(
-                        value = band.gainDb.toFloat(),
-                        onValueChange = { raw ->
-                            val snapped = (raw * 2f).roundToInt() / 2.0
-                            val updated = profile.bands.toMutableList()
-                            updated[idx] = band.copy(gainDb = snapped)
-                            hub.pilot.seteq(
-                                profile.copy(
-                                    id = "custom",
-                                    name = "Custom",
-                                    enabled = true,
-                                    bands = updated,
-                                ),
+                    EqResponseCanvas(profile = profile)
+                }
+            }
+
+            item(key = "preamp") {
+                GlassBox(
+                    shape = RoundedCornerShape(18.dp),
+                    elevated = true,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 6.dp),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Preamp Gain", style = MaterialTheme.typography.titleMedium, color = glass.ink)
+                            Text(
+                                text = "%+.1f dB".format(profile.preampDb),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = glass.accent,
                             )
-                        },
-                        valueRange = -12f..12f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = glass.accent,
-                            activeTrackColor = glass.accent,
-                            inactiveTrackColor = glass.glassBorder,
-                        ),
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = "%+.1f".format(band.gainDb),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (band.gainDb != 0.0) glass.accent else glass.inkSecondary,
-                        modifier = Modifier.width(46.dp).padding(start = 6.dp),
-                    )
+                        }
+                        Slider(
+                            value = profile.preampDb.toFloat(),
+                            onValueChange = { next ->
+                                val snapped = (next * 2f).roundToInt() / 2.0
+                                hub.pilot.seteq(profile.copy(id = "custom", name = "Custom", enabled = true, preampDb = snapped))
+                            },
+                            valueRange = -12f..12f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = glass.accent,
+                                activeTrackColor = glass.accent,
+                                inactiveTrackColor = glass.glassBorder,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            itemsIndexed(profile.bands) { idx, band ->
+                val freqLabel = if (band.frequency >= 1000.0) {
+                    "${(band.frequency / 1000.0).toInt()} kHz"
+                } else {
+                    "${band.frequency.toInt()} Hz"
+                }
+                GlassBox(
+                    shape = RoundedCornerShape(16.dp),
+                    elevated = true,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 4.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.width(64.dp)) {
+                            Text(freqLabel, style = MaterialTheme.typography.titleSmall, color = glass.ink)
+                            Text(band.kind.name, style = MaterialTheme.typography.labelSmall, color = glass.inkMuted)
+                        }
+                        Slider(
+                            value = band.gainDb.toFloat(),
+                            onValueChange = { raw ->
+                                val snapped = (raw * 2f).roundToInt() / 2.0
+                                val updated = profile.bands.toMutableList()
+                                updated[idx] = band.copy(gainDb = snapped)
+                                hub.pilot.seteq(
+                                    profile.copy(
+                                        id = "custom",
+                                        name = "Custom",
+                                        enabled = true,
+                                        bands = updated,
+                                    ),
+                                )
+                            },
+                            valueRange = -12f..12f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = glass.accent,
+                                activeTrackColor = glass.accent,
+                                inactiveTrackColor = glass.glassBorder,
+                            ),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = "%+.1f".format(band.gainDb),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (band.gainDb != 0.0) glass.accent else glass.inkSecondary,
+                            modifier = Modifier.width(46.dp).padding(start = 6.dp),
+                        )
+                    }
                 }
             }
         }

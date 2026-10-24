@@ -1,5 +1,11 @@
 package zuiwan.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -16,7 +22,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -27,7 +32,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -37,12 +48,19 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import dev.chrisbanes.haze.HazeInput
@@ -52,6 +70,131 @@ import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.hazeBlur
 import zuiwan.theme.LocalGlass
 import zuiwan.theme.LocalHaze
+
+@Stable
+class HeaderScroll {
+    var heightPx by mutableFloatStateOf(0f)
+        private set
+    var offsetPx by mutableFloatStateOf(0f)
+
+    val visibility: Float
+        get() = if (heightPx <= 1f) 1f else (1f + offsetPx / heightPx).coerceIn(0f, 1f)
+
+    fun updateheight(px: Float) {
+        if (px <= 0f) return
+        heightPx = px
+        offsetPx = offsetPx.coerceIn(-px, 0f)
+    }
+
+    val connection = object : NestedScrollConnection {
+        override fun onPostScroll(
+            consumed: Offset,
+            available: Offset,
+            source: NestedScrollSource,
+        ): Offset {
+            val h = heightPx
+            if (h <= 0f) return Offset.Zero
+            val dy = consumed.y
+            if (dy != 0f) {
+                offsetPx = (offsetPx + dy).coerceIn(-h, 0f)
+            }
+            return Offset.Zero
+        }
+
+        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+            val h = heightPx
+            if (h > 0f && offsetPx < -1f && offsetPx > -h + 1f) {
+                val target = if (offsetPx > -h * 0.5f) 0f else -h
+                animate(
+                    initialValue = offsetPx,
+                    targetValue = target,
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                ) { value, _ ->
+                    offsetPx = value
+                }
+            }
+            return Velocity.Zero
+        }
+    }
+}
+
+@Composable
+fun rememberheaderscroll(): HeaderScroll = remember { HeaderScroll() }
+
+@Composable
+fun ScrollHeaderHost(
+    scroll: HeaderScroll,
+    lifted: Boolean,
+    overlayHero: Boolean = false,
+    fallbackHeight: Dp = 88.dp,
+    header: @Composable () -> Unit,
+    content: @Composable (Dp) -> Unit,
+) {
+    val glass = LocalGlass.current
+    val haze = LocalHaze.current
+    val density = LocalDensity.current
+
+    LaunchedEffect(lifted) {
+        if (!lifted && scroll.offsetPx < 0f) {
+            animate(
+                initialValue = scroll.offsetPx,
+                targetValue = 0f,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+            ) { value, _ ->
+                scroll.offsetPx = value
+            }
+        }
+    }
+
+    val insetDp = if (overlayHero) {
+        0.dp
+    } else if (scroll.heightPx > 1f) {
+        with(density) { scroll.heightPx.toDp() }
+    } else {
+        fallbackHeight
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(scroll.connection),
+    ) {
+        content(insetDp)
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .onSizeChanged { scroll.updateheight(it.height.toFloat()) }
+                .graphicsLayer {
+                    translationY = scroll.offsetPx
+                    alpha = scroll.visibility
+                },
+        ) {
+            if (lifted) {
+                if (haze != null && glass.blurEnabled) {
+                    FrostedBarBackdrop(
+                        hazeState = haze,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to glass.bg.copy(alpha = 0.94f),
+                                    0.78f to glass.bg.copy(alpha = 0.82f),
+                                    1f to Color.Transparent,
+                                ),
+                            ),
+                    )
+                }
+            }
+            header()
+        }
+    }
+}
 
 @Composable
 fun AmbientBackdrop(
@@ -89,14 +232,14 @@ fun AmbientBackdrop(
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             val topAlpha = if (glass.isDark) {
-                if (intense) 0.28f else 0.11f
+                if (intense) 0.24f else 0.10f
             } else {
-                if (intense) 0.18f else 0.07f
+                if (intense) 0.14f else 0.06f
             }
             val sideAlpha = if (glass.isDark) {
-                if (intense) 0.18f else 0.07f
+                if (intense) 0.15f else 0.06f
             } else {
-                if (intense) 0.12f else 0.05f
+                if (intense) 0.10f else 0.04f
             }
 
             drawRect(
@@ -129,18 +272,18 @@ fun FrostedBarBackdrop(
     modifier: Modifier = Modifier,
 ) {
     val glass = LocalGlass.current
-    val baseSurface = if (glass.isDark) Color(0xFF1A1C26) else Color(0xFFF6F7FB)
+    val baseSurface = if (glass.isDark) Color(0xFF141620) else Color(0xFFF7F8FC)
     if (hazeState != null && glass.blurEnabled) {
         val hazeInput = remember(hazeState) { HazeInput.Sources(hazeState) }
         val style = remember(glass.isDark, baseSurface) {
             HazeBlurStyle {
                 backgroundColor(baseSurface)
-                blurRadius(30.dp)
-                noiseFactor(0.08f)
+                blurRadius(28.dp)
+                noiseFactor(0.05f)
                 colorEffects(
                     listOf(
                         HazeColorEffect.tint(
-                            baseSurface.copy(alpha = if (glass.isDark) 0.72f else 0.78f),
+                            baseSurface.copy(alpha = if (glass.isDark) 0.74f else 0.80f),
                         ),
                     ),
                 )
@@ -169,6 +312,7 @@ fun GlassBox(
     strong: Boolean = false,
     frosted: Boolean = false,
     accented: Boolean = false,
+    bordered: Boolean = false,
     elevation: Dp = 0.dp,
     onClick: (() -> Unit)? = null,
     contentPadding: PaddingValues = PaddingValues(0.dp),
@@ -187,18 +331,14 @@ fun GlassBox(
         else -> glass.glassFill
     }
 
-    val sheenTop = if (glass.isDark) {
-        Color.White.copy(alpha = if (strong || frosted) 0.10f else 0.08f)
+    val borderMod = if (bordered) {
+        Modifier.border(
+            BorderStroke(0.6.dp, glass.glassBorder),
+            shape,
+        )
     } else {
-        Color.White.copy(alpha = 0.85f)
+        Modifier
     }
-
-    val borderBrush = Brush.linearGradient(
-        colors = listOf(
-            if (accented) glass.accent.copy(alpha = 0.52f) else glass.glassHighlight,
-            if (accented) glass.accent.copy(alpha = 0.18f) else glass.glassBorder,
-        ),
-    )
 
     val shadowMod = if (elevation > 0.dp) {
         Modifier.shadow(
@@ -222,7 +362,7 @@ fun GlassBox(
             .then(shadowMod)
             .clip(shape)
             .background(baseFill)
-            .border(BorderStroke(0.9.dp, borderBrush), shape)
+            .then(borderMod)
             .then(clickMod),
     ) {
         if (useLiveBlur) {
@@ -231,15 +371,6 @@ fun GlassBox(
                 modifier = Modifier.matchParentSize(),
             )
         }
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(sheenTop, Color.Transparent),
-                    ),
-                ),
-        )
         Box(
             contentAlignment = contentAlignment,
             modifier = Modifier
@@ -261,27 +392,18 @@ fun BrandBar(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(horizontal = 18.dp, vertical = 10.dp),
     ) {
+        Icon(
+            imageVector = ZIcons.Wordmark,
+            contentDescription = "Zuiwan",
+            tint = glass.ink,
+            modifier = Modifier
+                .height(25.dp)
+                .width(104.dp),
+        )
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(
-                imageVector = ZIcons.Brand,
-                contentDescription = null,
-                tint = glass.ink,
-                modifier = Modifier.size(26.dp),
-            )
-            Text(
-                text = "Zuiwan",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = glass.ink,
-            )
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = actions,
         )
@@ -294,55 +416,69 @@ fun GlassIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     size: Dp = 40.dp,
-    iconSize: Dp = 19.dp,
+    iconSize: Dp = 21.dp,
     active: Boolean = false,
     solidAccent: Boolean = false,
+    softFill: Boolean = false,
     tint: Color? = null,
 ) {
     val glass = LocalGlass.current
-    if (solidAccent) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = modifier
-                .size(size)
-                .shadow(
-                    elevation = 8.dp,
-                    shape = CircleShape,
-                    ambientColor = glass.accent.copy(alpha = 0.36f),
-                    spotColor = glass.accent.copy(alpha = 0.36f),
+    when {
+        solidAccent -> {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = modifier
+                    .size(size)
+                    .shadow(
+                        elevation = 10.dp,
+                        shape = CircleShape,
+                        ambientColor = glass.accent.copy(alpha = 0.34f),
+                        spotColor = glass.accent.copy(alpha = 0.34f),
+                    )
+                    .clip(CircleShape)
+                    .background(glass.accent)
+                    .clickable(onClick = onClick),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = tint ?: glass.onAccent,
+                    modifier = Modifier.size(iconSize),
                 )
-                .clip(CircleShape)
-                .background(glass.accent)
-                .clickable(onClick = onClick),
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = tint ?: glass.onAccent,
-                modifier = Modifier.size(iconSize),
-            )
+            }
         }
-    } else {
-        val fill = when {
-            active -> glass.accentSoft
-            else -> glass.glassElevated
+        softFill -> {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(if (active) glass.accentSoft else glass.glassElevated)
+                    .clickable(onClick = onClick),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = tint ?: if (active) glass.accent else glass.ink,
+                    modifier = Modifier.size(iconSize),
+                )
+            }
         }
-        val rim = if (active) glass.accent.copy(alpha = 0.48f) else glass.glassBorder
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = modifier
-                .size(size)
-                .clip(CircleShape)
-                .background(fill)
-                .border(0.85.dp, rim, CircleShape)
-                .clickable(onClick = onClick),
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = tint ?: if (active) glass.accent else glass.ink,
-                modifier = Modifier.size(iconSize),
-            )
+        else -> {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .clickable(onClick = onClick),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = tint ?: if (active) glass.accent else glass.ink,
+                    modifier = Modifier.size(iconSize),
+                )
+            }
         }
     }
 }
@@ -357,55 +493,32 @@ fun GlassChip(
 ) {
     val glass = LocalGlass.current
     val shape = RoundedCornerShape(999.dp)
-    if (selected) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
-            modifier = modifier
-                .clip(shape)
-                .background(glass.accent)
-                .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 9.dp),
-        ) {
-            if (leadingIcon != null) {
-                Icon(
-                    imageVector = leadingIcon,
-                    contentDescription = null,
-                    tint = glass.onAccent,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = glass.onAccent,
+    val bg = if (selected) glass.accent else glass.glassElevated
+    val contentTint = if (selected) glass.onAccent else glass.ink
+    val iconTint = if (selected) glass.onAccent else glass.inkSecondary
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        modifier = modifier
+            .clip(shape)
+            .background(bg)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 15.dp, vertical = 8.dp),
+    ) {
+        if (leadingIcon != null) {
+            Icon(
+                imageVector = leadingIcon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(15.dp),
             )
         }
-    } else {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
-            modifier = modifier
-                .clip(shape)
-                .background(glass.glassElevated)
-                .border(0.85.dp, glass.glassBorder, shape)
-                .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 9.dp),
-        ) {
-            if (leadingIcon != null) {
-                Icon(
-                    imageVector = leadingIcon,
-                    contentDescription = null,
-                    tint = glass.inkSecondary,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = glass.ink,
-            )
-        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = contentTint,
+        )
     }
 }
 
@@ -414,45 +527,55 @@ fun GlassTopBar(
     title: String,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
+    showTitle: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val glass = LocalGlass.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 18.dp, vertical = 10.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         if (onBack != null) {
             GlassIconButton(
                 icon = ZIcons.Back,
                 onClick = onBack,
-                size = 40.dp,
-                iconSize = 19.dp,
             )
+        } else {
+            Spacer(Modifier.width(6.dp))
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineMedium,
-                color = glass.ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (!subtitle.isNullOrBlank()) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = glass.inkSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            AnimatedVisibility(
+                visible = showTitle && title.isNotBlank(),
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Column {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = glass.ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (!subtitle.isNullOrBlank()) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = glass.inkSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
         }
         Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = actions,
         )
@@ -503,7 +626,7 @@ fun GlassPillButton(
                 horizontalArrangement = Arrangement.Center,
                 modifier = modifier
                     .height(46.dp)
-                    .shadow(8.dp, shape, ambientColor = glass.accent.copy(alpha = 0.32f), spotColor = glass.accent.copy(alpha = 0.32f))
+                    .shadow(8.dp, shape, ambientColor = glass.accent.copy(alpha = 0.28f), spotColor = glass.accent.copy(alpha = 0.28f))
                     .clip(shape)
                     .background(glass.accent)
                     .clickable(onClick = onClick)
@@ -531,7 +654,6 @@ fun GlassPillButton(
                     .height(46.dp)
                     .clip(shape)
                     .background(glass.glassElevated)
-                    .border(0.85.dp, glass.glassBorder, shape)
                     .clickable(onClick = onClick)
                     .padding(horizontal = 20.dp),
             ) {
@@ -557,97 +679,161 @@ fun DetailHero(
     title: String,
     artworkUrl: String?,
     fallbackIcon: ImageVector,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)? = null,
+    circularArt: Boolean = false,
+    artworkSlot: (@Composable () -> Unit)? = null,
     subtitle: String? = null,
     onSubtitleClick: (() -> Unit)? = null,
     metadata: String? = null,
+    description: String? = null,
     onTitleClick: (() -> Unit)? = null,
     topActions: @Composable RowScope.() -> Unit = {},
     primaryActions: @Composable RowScope.() -> Unit = {},
 ) {
     val glass = LocalGlass.current
-    val heroText = if (glass.isDark) Color.White else glass.ink
-    val topScrim = if (glass.isDark) Color.Black.copy(alpha = 0.42f) else Color.White.copy(alpha = 0.45f)
+    var descExpanded by remember { mutableStateOf(false) }
+    val artShape = if (circularArt) CircleShape else RoundedCornerShape(22.dp)
 
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 396.dp)
-            .background(glass.bg),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        if (!artworkUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = artworkUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.matchParentSize(),
-            )
-        } else {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(glass.bgSecondary),
-            ) {
-                Icon(
-                    imageVector = fallbackIcon,
-                    contentDescription = null,
-                    tint = glass.inkMuted,
-                    modifier = Modifier.size(84.dp),
-                )
-            }
-        }
-
         Box(
             modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.0f to topScrim,
-                        0.22f to Color.Transparent,
-                        0.48f to Color.Transparent,
-                        0.76f to glass.bg.copy(alpha = 0.84f),
-                        1.0f to glass.bg,
-                    ),
-                ),
-        )
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .height(420.dp),
         ) {
-            GlassIconButton(
-                icon = ZIcons.Back,
-                onClick = onBack,
-                size = 40.dp,
-                iconSize = 19.dp,
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                content = topActions,
+            if (!artworkUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = artworkUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .blur(64.dp),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    glass.accent.copy(alpha = if (glass.isDark) 0.30f else 0.18f),
+                                    Color.Transparent,
+                                ),
+                            ),
+                        ),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0.0f to glass.bg.copy(alpha = if (glass.isDark) 0.38f else 0.50f),
+                            0.45f to glass.bg.copy(alpha = if (glass.isDark) 0.64f else 0.74f),
+                            0.78f to glass.bg.copy(alpha = if (glass.isDark) 0.90f else 0.92f),
+                            1.0f to glass.bg,
+                        ),
+                    ),
             )
         }
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(start = 24.dp, end = 24.dp, top = 164.dp, bottom = 20.dp),
+                .statusBarsPadding()
+                .padding(top = if (onBack != null) 8.dp else 56.dp, bottom = 18.dp),
         ) {
+            if (onBack != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                ) {
+                    GlassIconButton(
+                        icon = ZIcons.Back,
+                        onClick = onBack,
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        content = topActions,
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+
+            if (artworkSlot != null) {
+                Box(
+                    modifier = Modifier
+                        .size(220.dp)
+                        .shadow(
+                            elevation = 24.dp,
+                            shape = artShape,
+                            ambientColor = glass.accent.copy(alpha = 0.25f),
+                            spotColor = glass.glassShadow,
+                        )
+                        .clip(artShape),
+                ) {
+                    artworkSlot()
+                }
+            } else if (!artworkUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = artworkUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(220.dp)
+                        .shadow(
+                            elevation = 24.dp,
+                            shape = artShape,
+                            ambientColor = glass.accent.copy(alpha = 0.25f),
+                            spotColor = glass.glassShadow,
+                        )
+                        .clip(artShape)
+                        .background(glass.glassElevated),
+                )
+            } else {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(220.dp)
+                        .clip(artShape)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    glass.accent.copy(alpha = if (glass.isDark) 0.26f else 0.18f),
+                                    glass.accentSecondary.copy(alpha = if (glass.isDark) 0.18f else 0.12f),
+                                ),
+                            ),
+                        ),
+                ) {
+                    Icon(
+                        imageVector = fallbackIcon,
+                        contentDescription = null,
+                        tint = glass.accent,
+                        modifier = Modifier.size(78.dp),
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+
             Text(
                 text = title,
-                style = MaterialTheme.typography.displayLarge,
-                color = heroText,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = glass.ink,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = if (onTitleClick != null) Modifier.clickable(onClick = onTitleClick) else Modifier,
+                modifier = Modifier
+                    .padding(horizontal = 28.dp)
+                    .then(if (onTitleClick != null) Modifier.clickable(onClick = onTitleClick) else Modifier),
             )
 
             if (!subtitle.isNullOrBlank()) {
@@ -659,28 +845,48 @@ fun DetailHero(
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = if (onSubtitleClick != null) Modifier.clickable(onClick = onSubtitleClick) else Modifier,
+                    modifier = Modifier
+                        .padding(horizontal = 32.dp)
+                        .then(if (onSubtitleClick != null) Modifier.clickable(onClick = onSubtitleClick) else Modifier),
                 )
             }
 
             if (!metadata.isNullOrBlank()) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(5.dp))
                 Text(
                     text = metadata,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = heroText.copy(alpha = 0.72f),
+                    color = glass.inkSecondary,
                     textAlign = TextAlign.Center,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 32.dp),
                 )
             }
 
-            Spacer(Modifier.height(16.dp))
+            if (!description.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = glass.inkSecondary,
+                    textAlign = TextAlign.Center,
+                    maxLines = if (descExpanded) 12 else 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .padding(horizontal = 32.dp)
+                        .clickable { descExpanded = !descExpanded },
+                )
+            }
+
+            Spacer(Modifier.height(22.dp))
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
                 content = primaryActions,
             )
         }

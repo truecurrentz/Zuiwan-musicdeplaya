@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -22,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,9 +46,11 @@ import zuiwan.ui.GlassTopBar
 import zuiwan.ui.MediaCard
 import zuiwan.ui.QuickPickTile
 import zuiwan.ui.Route
+import zuiwan.ui.ScrollHeaderHost
 import zuiwan.ui.SectionHeader
 import zuiwan.ui.SongRow
 import zuiwan.ui.ZIcons
+import zuiwan.ui.rememberheaderscroll
 
 @Composable
 fun viewexplore(
@@ -60,150 +64,167 @@ fun viewexplore(
     val loading by hub.exploreLoading.collectAsState()
     val playback by hub.pilot.state.collectAsState()
 
-    LazyColumn(
-        contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        item(key = "header") {
+    val headerScroll = rememberheaderscroll()
+    val listState = rememberLazyListState()
+    val lifted by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 12
+        }
+    }
+
+    ScrollHeaderHost(
+        scroll = headerScroll,
+        lifted = lifted,
+        header = {
             GlassTopBar(title = "Explore") {
                 GlassIconButton(
                     icon = ZIcons.Refresh,
                     onClick = { hub.refreshexplore() },
                 )
             }
-        }
-
-        if (loading && explore.releases.isEmpty() && explore.moods.isEmpty()) {
-            item(key = "loader") {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 72.dp),
-                ) {
-                    CircularProgressIndicator(color = glass.accent)
-                }
-            }
-        }
-
-        if (explore.releases.isNotEmpty()) {
-            item(key = "releases_head") {
-                SectionHeader(title = "New Releases", subtitle = "Fresh Albums & Singles")
-            }
-            item(key = "releases_row") {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(explore.releases, key = { it.id }) { album ->
-                        AlbumGridCard(album = album) {
-                            onNavigate(Route.Album(album.id))
-                        }
+        },
+    ) { topPad ->
+        LazyColumn(
+            state = listState,
+            contentPadding = PaddingValues(
+                top = topPad + 6.dp,
+                bottom = bottomPadding.calculateBottomPadding() + 24.dp,
+            ),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            if (loading && explore.releases.isEmpty() && explore.moods.isEmpty()) {
+                item(key = "loader") {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 72.dp),
+                    ) {
+                        CircularProgressIndicator(color = glass.accent)
                     }
                 }
             }
-        }
 
-        explore.charts.forEachIndexed { cIdx, chart ->
-            item(key = "chart_head_$cIdx") {
-                Spacer(Modifier.height(10.dp))
-                SectionHeader(title = chart.title, subtitle = "Global Charts")
-            }
-            item(key = "chart_row_$cIdx") {
-                val songs = chart.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
-                if (songs.isNotEmpty()) {
-                    val cols = songs.take(15).chunked(3)
+            if (explore.releases.isNotEmpty()) {
+                item(key = "releases_head") {
+                    SectionHeader(title = "New Releases", subtitle = "Fresh Albums & Singles")
+                }
+                item(key = "releases_row") {
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        items(cols) { group ->
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                group.forEach { song ->
-                                    QuickPickTile(
-                                        track = song,
-                                        playing = playback.current?.id == song.id,
-                                        onClick = {
-                                            val idx = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-                                            hub.pilot.playtracks(songs, idx, chart.title)
-                                        },
-                                        onMore = { onTrackMenu(song) },
+                        items(explore.releases, key = { it.id }) { album ->
+                            AlbumGridCard(album = album) {
+                                onNavigate(Route.Album(album.id))
+                            }
+                        }
+                    }
+                }
+            }
+
+            explore.charts.forEachIndexed { cIdx, chart ->
+                item(key = "chart_head_$cIdx") {
+                    Spacer(Modifier.height(10.dp))
+                    SectionHeader(title = chart.title, subtitle = "Global Charts")
+                }
+                item(key = "chart_row_$cIdx") {
+                    val songs = chart.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
+                    if (songs.isNotEmpty()) {
+                        val cols = songs.take(15).chunked(3)
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(cols) { group ->
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    group.forEach { song ->
+                                        QuickPickTile(
+                                            track = song,
+                                            playing = playback.current?.id == song.id,
+                                            onClick = {
+                                                val idx = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+                                                hub.pilot.playtracks(songs, idx, chart.title)
+                                            },
+                                            onMore = { onTrackMenu(song) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(chart.items, key = { it.key }) { entry ->
+                                MediaCard(
+                                    item = entry,
+                                    onClick = {
+                                        when (entry) {
+                                            is FeedItem.SongCard -> hub.pilot.audioplay(entry.track, chart.title)
+                                            is FeedItem.AlbumCard -> onNavigate(Route.Album(entry.album.id))
+                                            is FeedItem.ArtistCard -> onNavigate(Route.Artist(entry.artist.id))
+                                            is FeedItem.PlaylistCard -> onNavigate(Route.Playlist(entry.playlist.id))
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (explore.moods.isNotEmpty()) {
+                item(key = "moods_head") {
+                    Spacer(Modifier.height(12.dp))
+                    SectionHeader(title = "Moods & Genres", subtitle = "Curated Atmospheres")
+                }
+                val pairs = explore.moods.chunked(2)
+                items(pairs) { rowItems ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 5.dp),
+                    ) {
+                        rowItems.forEach { tile ->
+                            val stripe = Color(tile.stripeColor or 0xFF000000L)
+                            GlassBox(
+                                shape = RoundedCornerShape(16.dp),
+                                elevated = true,
+                                onClick = {
+                                    onNavigate(Route.Browse(tile.browseId, tile.params, tile.title))
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(56.dp),
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxSize(),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(5.dp)
+                                            .height(56.dp)
+                                            .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
+                                            .background(stripe),
+                                    )
+                                    Text(
+                                        text = tile.title,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = glass.ink,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(horizontal = 14.dp),
                                     )
                                 }
                             }
                         }
-                    }
-                } else {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        items(chart.items, key = { it.key }) { entry ->
-                            MediaCard(
-                                item = entry,
-                                onClick = {
-                                    when (entry) {
-                                        is FeedItem.SongCard -> hub.pilot.audioplay(entry.track, chart.title)
-                                        is FeedItem.AlbumCard -> onNavigate(Route.Album(entry.album.id))
-                                        is FeedItem.ArtistCard -> onNavigate(Route.Artist(entry.artist.id))
-                                        is FeedItem.PlaylistCard -> onNavigate(Route.Playlist(entry.playlist.id))
-                                    }
-                                },
-                            )
+                        if (rowItems.size == 1) {
+                            Spacer(Modifier.weight(1f))
                         }
-                    }
-                }
-            }
-        }
-
-        if (explore.moods.isNotEmpty()) {
-            item(key = "moods_head") {
-                Spacer(Modifier.height(12.dp))
-                SectionHeader(title = "Moods & Genres", subtitle = "Curated Atmospheres")
-            }
-            val pairs = explore.moods.chunked(2)
-            items(pairs) { rowItems ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 5.dp),
-                ) {
-                    rowItems.forEach { tile ->
-                        val stripe = Color(tile.stripeColor or 0xFF000000L)
-                        GlassBox(
-                            shape = RoundedCornerShape(16.dp),
-                            onClick = {
-                                onNavigate(Route.Browse(tile.browseId, tile.params, tile.title))
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(56.dp),
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxSize(),
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(5.dp)
-                                        .height(56.dp)
-                                        .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
-                                        .background(stripe),
-                                )
-                                Text(
-                                    text = tile.title,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = glass.ink,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(horizontal = 14.dp),
-                                )
-                            }
-                        }
-                    }
-                    if (rowItems.size == 1) {
-                        Spacer(Modifier.weight(1f))
                     }
                 }
             }
@@ -227,67 +248,84 @@ fun viewbrowse(
     var shelves by remember(browseId, params) { mutableStateOf<List<FeedShelf>>(emptyList()) }
     var loading by remember(browseId, params) { mutableStateOf(true) }
 
+    val headerScroll = rememberheaderscroll()
+    val listState = rememberLazyListState()
+    val lifted by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 12
+        }
+    }
+
     LaunchedEffect(browseId, params) {
         loading = true
         shelves = hub.tube.loadbrowse(browseId, params).getOrDefault(emptyList())
         loading = false
     }
 
-    LazyColumn(
-        contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        item(key = "top") {
+    ScrollHeaderHost(
+        scroll = headerScroll,
+        lifted = lifted,
+        header = {
             GlassTopBar(title = title, onBack = onBack)
-        }
-        if (loading) {
-            item(key = "loading") {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 64.dp),
-                ) {
-                    CircularProgressIndicator(color = glass.accent)
-                }
-            }
-        }
-        shelves.forEachIndexed { idx, shelf ->
-            item(key = "b_head_$idx") {
-                SectionHeader(title = shelf.title, subtitle = shelf.subtitle)
-            }
-            val songs = shelf.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
-            if (songs.size == shelf.items.size && songs.isNotEmpty()) {
-                items(songs, key = { "${idx}_${it.id}" }) { song ->
-                    SongRow(
-                        track = song,
-                        playing = playback.current?.id == song.id,
-                        onClick = {
-                            val start = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-                            hub.pilot.playtracks(songs, start, shelf.title)
-                        },
-                        onMore = { onTrackMenu(song) },
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                    )
-                }
-            } else {
-                item(key = "b_row_$idx") {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        },
+    ) { topPad ->
+        LazyColumn(
+            state = listState,
+            contentPadding = PaddingValues(
+                top = topPad + 6.dp,
+                bottom = bottomPadding.calculateBottomPadding() + 24.dp,
+            ),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            if (loading) {
+                item(key = "loading") {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 64.dp),
                     ) {
-                        items(shelf.items, key = { it.key }) { item ->
-                            MediaCard(
-                                item = item,
-                                onClick = {
-                                    when (item) {
-                                        is FeedItem.SongCard -> hub.pilot.audioplay(item.track, shelf.title)
-                                        is FeedItem.AlbumCard -> onNavigate(Route.Album(item.album.id))
-                                        is FeedItem.ArtistCard -> onNavigate(Route.Artist(item.artist.id))
-                                        is FeedItem.PlaylistCard -> onNavigate(Route.Playlist(item.playlist.id))
-                                    }
-                                },
-                            )
+                        CircularProgressIndicator(color = glass.accent)
+                    }
+                }
+            }
+            shelves.forEachIndexed { idx, shelf ->
+                item(key = "b_head_$idx") {
+                    SectionHeader(title = shelf.title, subtitle = shelf.subtitle)
+                }
+                val songs = shelf.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
+                if (songs.size == shelf.items.size && songs.isNotEmpty()) {
+                    items(songs, key = { "${idx}_${it.id}" }) { song ->
+                        SongRow(
+                            track = song,
+                            playing = playback.current?.id == song.id,
+                            onClick = {
+                                val start = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+                                hub.pilot.playtracks(songs, start, shelf.title)
+                            },
+                            onMore = { onTrackMenu(song) },
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                        )
+                    }
+                } else {
+                    item(key = "b_row_$idx") {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(shelf.items, key = { it.key }) { item ->
+                                MediaCard(
+                                    item = item,
+                                    onClick = {
+                                        when (item) {
+                                            is FeedItem.SongCard -> hub.pilot.audioplay(item.track, shelf.title)
+                                            is FeedItem.AlbumCard -> onNavigate(Route.Album(item.album.id))
+                                            is FeedItem.ArtistCard -> onNavigate(Route.Artist(item.artist.id))
+                                            is FeedItem.PlaylistCard -> onNavigate(Route.Playlist(item.playlist.id))
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
                 }

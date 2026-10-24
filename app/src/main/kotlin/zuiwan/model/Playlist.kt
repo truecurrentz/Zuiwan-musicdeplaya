@@ -12,6 +12,8 @@ data class PlaylistSummary(
     val local: Boolean = false,
     val remoteId: String? = null,
     val editable: Boolean = false,
+    val thumbnails: List<String> = emptyList(),
+    val songCount: Int = 0,
 )
 
 data class PlaylistDetail(

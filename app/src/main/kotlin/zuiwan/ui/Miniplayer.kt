@@ -3,7 +3,6 @@ package zuiwan.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -160,29 +159,19 @@ fun GlassMiniplayer(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(glass.glassElevated)
-                            .border(0.75.dp, glass.glassBorder, CircleShape)
-                            .clickable(onClick = onPrev),
-                    ) {
-                        Icon(
-                            imageVector = ZIcons.FastRewind,
-                            contentDescription = null,
-                            tint = glass.ink,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
+                    GlassIconButton(
+                        icon = ZIcons.FastRewind,
+                        onClick = onPrev,
+                        size = 38.dp,
+                        iconSize = 17.dp,
+                    )
 
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(42.dp)
                             .clip(CircleShape)
                             .background(glass.accent)
                             .clickable(onClick = onTogglePlay),
@@ -191,34 +180,24 @@ fun GlassMiniplayer(
                             CircularProgressIndicator(
                                 color = glass.onAccent,
                                 strokeWidth = 2.dp,
-                                modifier = Modifier.size(19.dp),
+                                modifier = Modifier.size(18.dp),
                             )
                         } else {
                             Icon(
                                 imageVector = if (state.playing) ZIcons.Pause else ZIcons.Play,
                                 contentDescription = null,
                                 tint = glass.onAccent,
-                                modifier = Modifier.size(19.dp),
+                                modifier = Modifier.size(18.dp),
                             )
                         }
                     }
 
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(glass.glassElevated)
-                            .border(0.75.dp, glass.glassBorder, CircleShape)
-                            .clickable(onClick = onNext),
-                    ) {
-                        Icon(
-                            imageVector = ZIcons.FastForward,
-                            contentDescription = null,
-                            tint = glass.ink,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
+                    GlassIconButton(
+                        icon = ZIcons.FastForward,
+                        onClick = onNext,
+                        size = 38.dp,
+                        iconSize = 17.dp,
+                    )
                 }
             }
         }

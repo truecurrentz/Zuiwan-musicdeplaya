@@ -55,6 +55,56 @@ object ZIcons {
         horizontalLineTo(18.8f)
     }
 
+    val Wordmark: ImageVector = ImageVector.Builder(
+        name = "Wordmark",
+        defaultWidth = 108.dp,
+        defaultHeight = 26.dp,
+        viewportWidth = 100f,
+        viewportHeight = 24f,
+    ).path(
+        fill = null,
+        stroke = SolidColor(Color.White),
+        strokeLineWidth = 2.55f,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round,
+    ) {
+        moveTo(3.2f, 5.4f)
+        horizontalLineTo(16.2f)
+        lineTo(3.8f, 18.8f)
+        horizontalLineTo(16.6f)
+
+        moveTo(22.4f, 9.6f)
+        verticalLineTo(15.0f)
+        curveTo(22.4f, 17.4f, 24.4f, 19.0f, 27.1f, 19.0f)
+        curveTo(29.8f, 19.0f, 31.8f, 17.4f, 31.8f, 15.0f)
+        moveTo(31.8f, 9.6f)
+        verticalLineTo(18.8f)
+
+        moveTo(38.4f, 9.8f)
+        verticalLineTo(18.8f)
+        moveTo(38.4f, 5.3f)
+        verticalLineTo(5.5f)
+
+        moveTo(44.4f, 9.6f)
+        lineTo(47.8f, 18.8f)
+        lineTo(52.4f, 11.6f)
+        lineTo(57.0f, 18.8f)
+        lineTo(60.4f, 9.6f)
+
+        moveTo(75.6f, 14.2f)
+        arcTo(4.6f, 4.6f, 0f, true, true, 75.59f, 14.2f)
+        close()
+        moveTo(75.6f, 9.6f)
+        verticalLineTo(18.8f)
+
+        moveTo(82.4f, 18.8f)
+        verticalLineTo(9.6f)
+        moveTo(82.4f, 13.6f)
+        curveTo(82.4f, 11.0f, 84.6f, 9.5f, 87.5f, 9.5f)
+        curveTo(90.4f, 9.5f, 92.6f, 11.1f, 92.6f, 13.8f)
+        verticalLineTo(18.8f)
+    }.build()
+
     val Home: ImageVector = stroke("Home") {
         moveTo(12f, 3f)
         arcTo(9f, 9f, 0f, true, true, 11.99f, 3f)
@@ -106,6 +156,30 @@ object ZIcons {
         verticalLineTo(19.5f)
         horizontalLineTo(13.8f)
         close()
+    }
+
+    val List: ImageVector = stroke("List") {
+        moveTo(4.5f, 6.5f)
+        horizontalLineTo(4.8f)
+        moveTo(8.8f, 6.5f)
+        horizontalLineTo(19.5f)
+        moveTo(4.5f, 12f)
+        horizontalLineTo(4.8f)
+        moveTo(8.8f, 12f)
+        horizontalLineTo(19.5f)
+        moveTo(4.5f, 17.5f)
+        horizontalLineTo(4.8f)
+        moveTo(8.8f, 17.5f)
+        horizontalLineTo(19.5f)
+    }
+
+    val Sort: ImageVector = stroke("Sort") {
+        moveTo(4f, 7f)
+        horizontalLineTo(20f)
+        moveTo(4f, 12f)
+        horizontalLineTo(15f)
+        moveTo(4f, 17f)
+        horizontalLineTo(10f)
     }
 
     val Library: ImageVector = Grid
@@ -713,6 +787,114 @@ object ZIcons {
         horizontalLineTo(18f)
         moveTo(6f, 14.5f)
         horizontalLineTo(18f)
+    }
+
+    val Lock: ImageVector = stroke("Lock") {
+        moveTo(6.5f, 11f)
+        horizontalLineTo(17.5f)
+        curveTo(18.3f, 11f, 19f, 11.7f, 19f, 12.5f)
+        verticalLineTo(18.5f)
+        curveTo(19f, 19.3f, 18.3f, 20f, 17.5f, 20f)
+        horizontalLineTo(6.5f)
+        curveTo(5.7f, 20f, 5f, 19.3f, 5f, 18.5f)
+        verticalLineTo(12.5f)
+        curveTo(5f, 11.7f, 5.7f, 11f, 6.5f, 11f)
+        close()
+        moveTo(8.5f, 11f)
+        verticalLineTo(7.8f)
+        arcTo(3.5f, 3.5f, 0f, false, true, 15.5f, 7.8f)
+        verticalLineTo(11f)
+    }
+
+    val Unlock: ImageVector = stroke("Unlock") {
+        moveTo(6.5f, 11f)
+        horizontalLineTo(17.5f)
+        curveTo(18.3f, 11f, 19f, 11.7f, 19f, 12.5f)
+        verticalLineTo(18.5f)
+        curveTo(19f, 19.3f, 18.3f, 20f, 17.5f, 20f)
+        horizontalLineTo(6.5f)
+        curveTo(5.7f, 20f, 5f, 19.3f, 5f, 18.5f)
+        verticalLineTo(12.5f)
+        curveTo(5f, 11.7f, 5.7f, 11f, 6.5f, 11f)
+        close()
+        moveTo(8.5f, 11f)
+        verticalLineTo(7.8f)
+        arcTo(3.5f, 3.5f, 0f, false, true, 15.2f, 6.4f)
+    }
+
+    val Edit: ImageVector = stroke("Edit") {
+        moveTo(15.5f, 4.8f)
+        lineTo(19.2f, 8.5f)
+        lineTo(9.2f, 18.5f)
+        horizontalLineTo(5.5f)
+        verticalLineTo(14.8f)
+        close()
+    }
+
+    val Palette: ImageVector = stroke("Palette") {
+        moveTo(12f, 3.5f)
+        curveTo(7.2f, 3.5f, 3.5f, 7.1f, 3.5f, 11.7f)
+        curveTo(3.5f, 16.2f, 7.2f, 19.8f, 11.5f, 19.8f)
+        curveTo(13.1f, 19.8f, 14.2f, 18.7f, 14.2f, 17.3f)
+        curveTo(14.2f, 16.5f, 13.8f, 15.9f, 13.8f, 15.2f)
+        curveTo(13.8f, 14.3f, 14.6f, 13.6f, 15.6f, 13.6f)
+        horizontalLineTo(17.2f)
+        curveTo(19.1f, 13.6f, 20.5f, 12.1f, 20.5f, 10.2f)
+        curveTo(20.5f, 6.4f, 16.7f, 3.5f, 12f, 3.5f)
+        close()
+        moveTo(8f, 9.5f)
+        verticalLineTo(9.7f)
+        moveTo(11.5f, 7.5f)
+        verticalLineTo(7.7f)
+        moveTo(15.2f, 8.8f)
+        verticalLineTo(9.0f)
+    }
+
+    val Storage: ImageVector = stroke("Storage") {
+        moveTo(5f, 6f)
+        horizontalLineTo(19f)
+        verticalLineTo(10.5f)
+        horizontalLineTo(5f)
+        close()
+        moveTo(5f, 13.5f)
+        horizontalLineTo(19f)
+        verticalLineTo(18f)
+        horizontalLineTo(5f)
+        close()
+        moveTo(8f, 8.2f)
+        horizontalLineTo(8.3f)
+        moveTo(8f, 15.7f)
+        horizontalLineTo(8.3f)
+    }
+
+    val Backup: ImageVector = stroke("Backup") {
+        moveTo(7f, 18f)
+        horizontalLineTo(17.2f)
+        arcTo(3.5f, 3.5f, 0f, false, false, 17.8f, 11.1f)
+        arcTo(5.2f, 5.2f, 0f, false, false, 7.6f, 9.8f)
+        arcTo(4.1f, 4.1f, 0f, false, false, 7f, 18f)
+        close()
+        moveTo(12f, 15.5f)
+        verticalLineTo(10.5f)
+        moveTo(9.8f, 12.6f)
+        lineTo(12f, 10.4f)
+        lineTo(14.2f, 12.6f)
+    }
+
+    val Language: ImageVector = stroke("Language") {
+        moveTo(4f, 6.5f)
+        horizontalLineTo(13f)
+        moveTo(8.5f, 4.5f)
+        verticalLineTo(6.5f)
+        moveTo(6f, 6.5f)
+        curveTo(6.5f, 10.8f, 8.8f, 13.8f, 12.2f, 15.5f)
+        moveTo(11f, 9f)
+        curveTo(10f, 12.2f, 7.8f, 14.5f, 4.8f, 15.8f)
+        moveTo(13.2f, 19.5f)
+        lineTo(16.6f, 10.8f)
+        lineTo(20f, 19.5f)
+        moveTo(14.4f, 16.8f)
+        horizontalLineTo(18.8f)
     }
 
     val User: ImageVector = stroke("User") {

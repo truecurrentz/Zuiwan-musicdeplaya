@@ -127,6 +127,10 @@ class Hub(val appContext: Context) {
         .map { rows -> rows.map { it.totrack() } }
         .stateIn(scope, SharingStarted.Lazily, emptyList())
 
+    val topTracks: StateFlow<List<Track>> = dao.mostplayedtracks()
+        .map { rows -> rows.map { it.totrack() } }
+        .stateIn(scope, SharingStarted.Lazily, emptyList())
+
     val savedAlbums: StateFlow<List<AlbumSummary>> = dao.savedalbums()
         .map { rows -> rows.map { it.tosummary() } }
         .stateIn(scope, SharingStarted.Lazily, emptyList())
@@ -137,11 +141,35 @@ class Hub(val appContext: Context) {
 
     val playlists: StateFlow<List<PlaylistSummary>> = combine(
         dao.allplaylists(),
-        likedTracks,
+        dao.totalplaylistlinks(),
     ) { rows, _ ->
         rows.map { row ->
-            val cnt = dao.playlistcount(row.id)
-            row.tosummary(cnt)
+            val tracks = dao.playlisttracks(row.id)
+            val thumbs = buildList {
+                if (row.artwork.isNotBlank()) add(row.artwork)
+                tracks.forEach { t ->
+                    if (t.artwork.isNotBlank() && t.artwork !in this && size < 4) {
+                        add(t.artwork)
+                    }
+                }
+            }
+            val countLabel = if (row.local || tracks.isNotEmpty()) {
+                "${tracks.size} songs"
+            } else {
+                "Playlist"
+            }
+            PlaylistSummary(
+                id = row.id,
+                title = row.title,
+                author = row.author ?: if (row.local) "You" else "YouTube Music",
+                countText = countLabel,
+                artwork = row.artwork.ifBlank { thumbs.firstOrNull().orEmpty() },
+                local = row.local,
+                remoteId = row.remoteId,
+                editable = row.editable,
+                thumbnails = thumbs,
+                songCount = tracks.size,
+            )
         }
     }.stateIn(scope, SharingStarted.Lazily, emptyList())
 
@@ -260,6 +288,28 @@ class Hub(val appContext: Context) {
         }
     }
 
+    fun togglesaveplaylist(playlist: PlaylistSummary) {
+        scope.launch {
+            val existing = dao.getplaylist(playlist.id)
+            if (existing != null) {
+                dao.clearplaylisttracks(playlist.id)
+                dao.deleteplaylist(playlist.id)
+            } else {
+                dao.putplaylist(
+                    PlaylistEntity(
+                        id = playlist.id,
+                        title = playlist.title,
+                        author = playlist.author ?: "YouTube Music",
+                        artwork = playlist.artwork,
+                        local = false,
+                        remoteId = playlist.id,
+                        editable = false,
+                    ),
+                )
+            }
+        }
+    }
+
     fun createplaylist(title: String, onCreated: (String) -> Unit = {}) {
         val clean = title.trim()
         if (clean.isEmpty()) return
@@ -340,8 +390,12 @@ class Hub(val appContext: Context) {
         withContext(Dispatchers.IO) {
             val entity = dao.getplaylist(playlistId) ?: return@withContext null
             val tracks = dao.playlisttracks(playlistId).map { it.totrack() }
+            val thumbs = tracks.mapNotNull { it.artwork.takeIf(String::isNotBlank) }.distinct().take(4)
             PlaylistDetail(
-                playlist = entity.tosummary(tracks.size),
+                playlist = entity.tosummary(tracks.size).copy(
+                    thumbnails = thumbs,
+                    songCount = tracks.size,
+                ),
                 tracks = tracks,
             )
         }

@@ -30,6 +30,9 @@ interface MusicDao {
     @Query("SELECT * FROM tracks WHERE lastPlayedAt IS NOT NULL ORDER BY lastPlayedAt DESC LIMIT 80")
     fun recenttracks(): Flow<List<TrackEntity>>
 
+    @Query("SELECT * FROM tracks WHERE playCount > 0 ORDER BY totalPlayTimeMs DESC, playCount DESC LIMIT 50")
+    fun mostplayedtracks(): Flow<List<TrackEntity>>
+
     @Query(
         """
         UPDATE tracks
@@ -92,6 +95,9 @@ interface MusicDao {
 
     @Query("DELETE FROM playlists WHERE id = :id")
     suspend fun deleteplaylist(id: String)
+
+    @Query("SELECT COUNT(*) FROM playlist_tracks")
+    fun totalplaylistlinks(): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM playlist_tracks WHERE playlistId = :playlistId")
     suspend fun playlistcount(playlistId: String): Int

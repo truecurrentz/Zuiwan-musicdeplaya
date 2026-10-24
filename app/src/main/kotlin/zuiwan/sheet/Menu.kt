@@ -154,7 +154,7 @@ fun TrackMenuSheet(
                     onNavigate(Route.Album(albumId))
                 }
             }
-            MenuActionRow(ZIcons.Info, "Audio details") {
+            MenuActionRow(ZIcons.Info, "Song info") {
                 onDismiss()
                 onShowInfo(track)
             }
