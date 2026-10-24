@@ -163,7 +163,7 @@ fun TrackMenuSheet(
                     type = "text/plain"
                     putExtra(
                         Intent.EXTRA_TEXT,
-                        "${track.title} — ${track.artistline()}\nhttps://music.youtube.com/watch?v=${track.id}",
+                        "${track.title} - ${track.artistline()}\nhttps://music.youtube.com/watch?v=${track.id}",
                     )
                 }
                 context.startActivity(Intent.createChooser(share, track.title))

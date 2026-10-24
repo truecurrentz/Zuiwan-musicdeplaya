@@ -1,5 +1,6 @@
 package zuiwan.screen
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -13,11 +14,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -42,9 +43,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -54,14 +58,23 @@ import zuiwan.model.SearchTab
 import zuiwan.model.Track
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
+import zuiwan.ui.AlbumGridCard
 import zuiwan.ui.ArtImage
+import zuiwan.ui.BrandBar
 import zuiwan.ui.GlassBox
 import zuiwan.ui.GlassChip
+import zuiwan.ui.GlassIconButton
 import zuiwan.ui.MediaCard
+import zuiwan.ui.QuickPickTile
 import zuiwan.ui.Route
 import zuiwan.ui.SectionHeader
 import zuiwan.ui.SongRow
 import zuiwan.ui.ZIcons
+
+private enum class DiscoverPane(val label: String, val icon: ImageVector) {
+    EXPLORE("Explore", ZIcons.Explore),
+    SUGGESTIONS("Suggestions", ZIcons.Sparkles),
+}
 
 @Composable
 fun viewsearch(
@@ -73,16 +86,34 @@ fun viewsearch(
     val glass = LocalGlass.current
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
+
     val recentSearches by hub.searchHistory.collectAsState()
+    val explore by hub.exploreFeed.collectAsState()
+    val exploreLoading by hub.exploreLoading.collectAsState()
+    val homeFeed by hub.homeFeed.collectAsState()
+    val history by hub.historyTracks.collectAsState()
     val playback by hub.pilot.state.collectAsState()
 
     var query by rememberSaveable { mutableStateOf("") }
     var submitted by rememberSaveable { mutableStateOf("") }
     var tab by rememberSaveable { mutableStateOf(SearchTab.ALL) }
+    var pane by rememberSaveable { mutableStateOf(DiscoverPane.SUGGESTIONS) }
     var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
     var suggestedItems by remember { mutableStateOf<List<FeedItem>>(emptyList()) }
     var page by remember { mutableStateOf(SearchPage()) }
     var loading by remember { mutableStateOf(false) }
+
+    val uniqueSongs = remember(history, homeFeed, explore) {
+        val fromHome = homeFeed.shelves
+            .flatMap { it.items }
+            .mapNotNull { (it as? FeedItem.SongCard)?.track }
+        val fromCharts = explore.charts
+            .flatMap { it.items }
+            .mapNotNull { (it as? FeedItem.SongCard)?.track }
+        (history + fromHome + fromCharts)
+            .distinctBy { it.id }
+            .take(12)
+    }
 
     val listState = rememberLazyListState()
     val nearEnd by remember {
@@ -137,16 +168,19 @@ fun viewsearch(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding(),
-    ) {
-        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        BrandBar {
+            GlassIconButton(
+                icon = ZIcons.Settings,
+                onClick = { onNavigate(Route.Settings) },
+            )
+        }
+
+        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
             GlassBox(
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(999.dp),
                 elevated = true,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 13.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Row(
@@ -156,16 +190,16 @@ fun viewsearch(
                     Icon(
                         imageVector = ZIcons.Search,
                         contentDescription = null,
-                        tint = glass.accent,
+                        tint = glass.inkSecondary,
                         modifier = Modifier.size(20.dp),
                     )
                     Spacer(Modifier.width(12.dp))
                     Box(modifier = Modifier.weight(1f)) {
                         if (query.isEmpty()) {
                             Text(
-                                text = "Songs, artists, albums, playlists...",
+                                text = "Search YouTube Music",
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = glass.inkMuted,
+                                color = glass.inkSecondary,
                             )
                         }
                         BasicTextField(
@@ -201,6 +235,15 @@ fun viewsearch(
                                 modifier = Modifier.size(16.dp),
                             )
                         }
+                    } else {
+                        Icon(
+                            imageVector = ZIcons.Globe,
+                            contentDescription = null,
+                            tint = glass.inkSecondary,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable { pane = DiscoverPane.EXPLORE },
+                        )
                     }
                 }
             }
@@ -212,7 +255,7 @@ fun viewsearch(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 SearchTab.entries.forEach { t ->
                     GlassChip(
@@ -222,6 +265,51 @@ fun viewsearch(
                     )
                 }
             }
+        } else if (query.isBlank()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+            ) {
+                DiscoverPane.entries.forEach { item ->
+                    val active = pane == item
+                    val tint = if (active) glass.accent else glass.inkSecondary
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { pane = item }
+                            .padding(top = 8.dp),
+                    ) {
+                        Icon(
+                            imageVector = item.icon,
+                            contentDescription = item.label,
+                            tint = tint,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = item.label,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = tint,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(68.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(if (active) glass.accent else Color.Transparent),
+                        )
+                    }
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(0.8.dp)
+                    .background(glass.glassBorder),
+            )
         }
 
         LazyColumn(
@@ -252,41 +340,198 @@ fun viewsearch(
                             hub.pilot.audioplay(song, "Search")
                         }
                     }
-                } else if (recentSearches.isNotEmpty()) {
-                    item(key = "recent_head") {
-                        SectionHeader(
-                            title = "Recent Searches",
-                            actionLabel = "Clear",
-                            onAction = { hub.clearsearches() },
-                        )
-                    }
-                    items(recentSearches, key = { it }) { item ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    query = item
-                                    runsearch(item)
-                                }
-                                .padding(horizontal = 22.dp, vertical = 11.dp),
-                        ) {
-                            Icon(ZIcons.History, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(14.dp))
-                            Text(
-                                text = item,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = glass.ink,
-                                modifier = Modifier.weight(1f),
+                } else if (pane == DiscoverPane.SUGGESTIONS) {
+                    if (recentSearches.isNotEmpty()) {
+                        item(key = "recent_head") {
+                            Spacer(Modifier.height(8.dp))
+                            SectionHeader(
+                                title = "Recent searches",
+                                actionLabel = "Clear",
+                                onAction = { hub.clearsearches() },
                             )
+                        }
+                        item(key = "recent_chips") {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 18.dp, vertical = 4.dp),
+                            ) {
+                                recentSearches.take(10).forEach { term ->
+                                    GlassChip(
+                                        label = term,
+                                        selected = false,
+                                        leadingIcon = ZIcons.History,
+                                        onClick = {
+                                            query = term
+                                            runsearch(term)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (uniqueSongs.isNotEmpty()) {
+                        item(key = "unique_head") {
+                            Spacer(Modifier.height(10.dp))
+                            SectionHeader(
+                                title = "Unique Songs",
+                                actionLabel = "Play all",
+                                onAction = {
+                                    hub.pilot.playtracks(uniqueSongs, 0, "Unique Songs", fetchRadio = true)
+                                },
+                            )
+                        }
+                        itemsIndexed(uniqueSongs, key = { _, s -> s.id }) { idx, song ->
+                            SongRow(
+                                track = song,
+                                indexNumber = idx + 1,
+                                playing = playback.current?.id == song.id,
+                                cardBackground = true,
+                                onClick = {
+                                    hub.pilot.playtracks(uniqueSongs, idx, "Unique Songs", fetchRadio = true)
+                                },
+                                onMore = { onTrackMenu(song) },
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+                } else {
+                    if (exploreLoading && explore.releases.isEmpty() && explore.moods.isEmpty()) {
+                        item(key = "exp_loader") {
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .clickable { hub.deletesearch(item) },
+                                    .fillMaxWidth()
+                                    .padding(vertical = 64.dp),
                             ) {
-                                Icon(ZIcons.Close, null, tint = glass.inkMuted, modifier = Modifier.size(15.dp))
+                                CircularProgressIndicator(color = glass.accent)
+                            }
+                        }
+                    }
+
+                    if (explore.releases.isNotEmpty()) {
+                        item(key = "exp_releases_head") {
+                            Spacer(Modifier.height(10.dp))
+                            SectionHeader(title = "New Releases")
+                        }
+                        item(key = "exp_releases_row") {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                items(explore.releases, key = { it.id }) { album ->
+                                    AlbumGridCard(album = album) {
+                                        onNavigate(Route.Album(album.id))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    explore.charts.forEachIndexed { cIdx, chart ->
+                        item(key = "exp_chart_head_$cIdx") {
+                            Spacer(Modifier.height(10.dp))
+                            SectionHeader(title = chart.title)
+                        }
+                        item(key = "exp_chart_row_$cIdx") {
+                            val songs = chart.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
+                            if (songs.isNotEmpty()) {
+                                val cols = songs.take(16).chunked(4)
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    items(cols) { group ->
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            group.forEach { song ->
+                                                QuickPickTile(
+                                                    track = song,
+                                                    playing = playback.current?.id == song.id,
+                                                    onClick = {
+                                                        val idx = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+                                                        hub.pilot.playtracks(songs, idx, chart.title)
+                                                    },
+                                                    onMore = { onTrackMenu(song) },
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    items(chart.items, key = { it.key }) { entry ->
+                                        MediaCard(
+                                            item = entry,
+                                            onClick = {
+                                                when (entry) {
+                                                    is FeedItem.SongCard -> hub.pilot.audioplay(entry.track, chart.title)
+                                                    is FeedItem.AlbumCard -> onNavigate(Route.Album(entry.album.id))
+                                                    is FeedItem.ArtistCard -> onNavigate(Route.Artist(entry.artist.id))
+                                                    is FeedItem.PlaylistCard -> onNavigate(Route.Playlist(entry.playlist.id))
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (explore.moods.isNotEmpty()) {
+                        item(key = "exp_moods_head") {
+                            Spacer(Modifier.height(12.dp))
+                            SectionHeader(title = "Moods & Genres")
+                        }
+                        val pairs = explore.moods.chunked(2)
+                        items(pairs) { rowItems ->
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 18.dp, vertical = 5.dp),
+                            ) {
+                                rowItems.forEach { tile ->
+                                    val stripe = Color(tile.stripeColor or 0xFF000000L)
+                                    GlassBox(
+                                        shape = RoundedCornerShape(16.dp),
+                                        onClick = {
+                                            onNavigate(Route.Browse(tile.browseId, tile.params, tile.title))
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(54.dp),
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxSize(),
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(5.dp)
+                                                    .height(54.dp)
+                                                    .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
+                                                    .background(stripe),
+                                            )
+                                            Text(
+                                                text = tile.title,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = glass.ink,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(horizontal = 14.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                                if (rowItems.size == 1) {
+                                    Spacer(Modifier.weight(1f))
+                                }
                             }
                         }
                     }
@@ -295,7 +540,7 @@ fun viewsearch(
                 if (tab == SearchTab.ALL) {
                     page.shelves.forEachIndexed { idx, shelf ->
                         item(key = "s_head_$idx") {
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(8.dp))
                             SectionHeader(title = shelf.title)
                         }
                         val allSongs = shelf.items.all { it is FeedItem.SongCard }
@@ -391,7 +636,7 @@ private fun RenderFeedRow(
                     listOfNotNull(
                         item.album.artists.joinToString(", ") { it.name }.takeIf { it.isNotBlank() },
                         item.album.year?.toString(),
-                    ).joinToString(" • ").ifBlank { "Album" },
+                    ).joinToString(" - ").ifBlank { "Album" },
                     style = MaterialTheme.typography.bodyMedium,
                     color = glass.inkSecondary,
                     maxLines = 1,
@@ -428,7 +673,7 @@ private fun RenderFeedRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(item.playlist.title, style = MaterialTheme.typography.titleMedium, color = glass.ink, maxLines = 1)
                 Text(
-                    listOfNotNull(item.playlist.author, item.playlist.countText).joinToString(" • ").ifBlank { "Playlist" },
+                    listOfNotNull(item.playlist.author, item.playlist.countText).joinToString(" - ").ifBlank { "Playlist" },
                     style = MaterialTheme.typography.bodyMedium,
                     color = glass.inkSecondary,
                     maxLines = 1,

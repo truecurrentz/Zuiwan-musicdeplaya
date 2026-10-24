@@ -2,9 +2,11 @@ package zuiwan.screen
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -35,26 +37,31 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import zuiwan.model.Track
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
 import zuiwan.ui.ArtImage
+import zuiwan.ui.BrandBar
 import zuiwan.ui.GlassBox
 import zuiwan.ui.GlassChip
 import zuiwan.ui.GlassIconButton
 import zuiwan.ui.GlassPillButton
-import zuiwan.ui.GlassTopBar
 import zuiwan.ui.Route
+import zuiwan.ui.SectionHeader
 import zuiwan.ui.SongRow
 import zuiwan.ui.ZIcons
 
-private enum class LibSection(val label: String) {
-    LIKED("Liked"),
-    PLAYLISTS("Playlists"),
-    DOWNLOADS("Downloads"),
-    ALBUMS("Albums"),
-    ARTISTS("Artists"),
+private enum class LibSection(val label: String, val icon: ImageVector) {
+    OVERVIEW("Library", ZIcons.Waveform),
+    PLAYLISTS("Playlists", ZIcons.Playlist),
+    LIKED("Liked", ZIcons.HeartFilled),
+    DOWNLOADS("Offline", ZIcons.Offline),
+    ALBUMS("Albums", ZIcons.Album),
+    ARTISTS("Artists", ZIcons.Artist),
 }
 
 @Composable
@@ -68,14 +75,20 @@ fun viewlibrary(
 
     val liked by hub.likedTracks.collectAsState()
     val downloads by hub.downloadedTracks.collectAsState()
+    val history by hub.historyTracks.collectAsState()
     val playlists by hub.playlists.collectAsState()
     val albums by hub.savedAlbums.collectAsState()
     val artists by hub.savedArtists.collectAsState()
     val playback by hub.pilot.state.collectAsState()
 
-    var section by rememberSaveable { mutableStateOf(LibSection.LIKED) }
+    var section by rememberSaveable { mutableStateOf(LibSection.OVERVIEW) }
     var showCreate by remember { mutableStateOf(false) }
     var draftName by remember { mutableStateOf("") }
+
+    val heroPool = remember(liked, history, downloads) {
+        (liked + history + downloads).distinctBy { it.id }
+    }
+    val heroLead = heroPool.firstOrNull()
 
     val importM3uLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -126,7 +139,7 @@ fun viewlibrary(
         modifier = Modifier.fillMaxSize(),
     ) {
         item(key = "top") {
-            GlassTopBar(title = "Library") {
+            BrandBar {
                 GlassIconButton(
                     icon = ZIcons.Equalizer,
                     onClick = { onNavigate(Route.Equalizer) },
@@ -135,44 +148,10 @@ fun viewlibrary(
                     icon = ZIcons.Add,
                     onClick = { showCreate = true },
                 )
-            }
-        }
-
-        item(key = "bento") {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-            ) {
-                GlassBox(
-                    shape = RoundedCornerShape(20.dp),
-                    accented = section == LibSection.LIKED,
-                    onClick = { section = LibSection.LIKED },
-                    contentPadding = PaddingValues(14.dp),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Column {
-                        Icon(ZIcons.HeartFilled, null, tint = glass.accent, modifier = Modifier.size(22.dp))
-                        Spacer(Modifier.height(8.dp))
-                        Text("Liked Songs", style = MaterialTheme.typography.titleMedium, color = glass.ink)
-                        Text("${liked.size} tracks", style = MaterialTheme.typography.bodyMedium, color = glass.inkSecondary)
-                    }
-                }
-                GlassBox(
-                    shape = RoundedCornerShape(20.dp),
-                    accented = section == LibSection.DOWNLOADS,
-                    onClick = { section = LibSection.DOWNLOADS },
-                    contentPadding = PaddingValues(14.dp),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Column {
-                        Icon(ZIcons.Download, null, tint = glass.accent, modifier = Modifier.size(22.dp))
-                        Spacer(Modifier.height(8.dp))
-                        Text("Downloads", style = MaterialTheme.typography.titleMedium, color = glass.ink)
-                        Text("${downloads.size} offline", style = MaterialTheme.typography.bodyMedium, color = glass.inkSecondary)
-                    }
-                }
+                GlassIconButton(
+                    icon = ZIcons.Settings,
+                    onClick = { onNavigate(Route.Settings) },
+                )
             }
         }
 
@@ -182,11 +161,12 @@ fun viewlibrary(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
             ) {
                 LibSection.entries.forEach { item ->
                     GlassChip(
                         label = item.label,
+                        leadingIcon = item.icon,
                         selected = section == item,
                         onClick = { section = item },
                     )
@@ -195,6 +175,165 @@ fun viewlibrary(
         }
 
         when (section) {
+            LibSection.OVERVIEW -> {
+                item(key = "hero_most_played") {
+                    GlassBox(
+                        shape = RoundedCornerShape(26.dp),
+                        elevated = true,
+                        contentPadding = PaddingValues(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                ArtImage(
+                                    url = heroLead?.artwork,
+                                    shape = RoundedCornerShape(18.dp),
+                                    fallbackIcon = ZIcons.Waveform,
+                                    modifier = Modifier.size(76.dp),
+                                )
+                                Spacer(Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .background(glass.accentSoft)
+                                            .padding(horizontal = 10.dp, vertical = 3.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = ZIcons.Star,
+                                            contentDescription = null,
+                                            tint = glass.accent,
+                                            modifier = Modifier.size(11.dp),
+                                        )
+                                        Text(
+                                            text = "MOST PLAYED",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = glass.accent,
+                                        )
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        text = heroLead?.title ?: "Your Collection",
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        color = glass.ink,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = if (heroPool.isEmpty()) "Save or stream tracks to begin" else "${heroPool.size} songs",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = glass.inkSecondary,
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                GlassPillButton(
+                                    text = "Play all",
+                                    icon = ZIcons.Play,
+                                    primary = true,
+                                    onClick = {
+                                        if (heroPool.isNotEmpty()) {
+                                            hub.pilot.playtracks(heroPool, 0, "Library Mix", fetchRadio = true)
+                                        }
+                                    },
+                                )
+                                GlassIconButton(
+                                    icon = ZIcons.Shuffle,
+                                    onClick = {
+                                        if (heroPool.isNotEmpty()) {
+                                            hub.pilot.playtracks(heroPool.shuffled(), 0, "Library Mix", fetchRadio = true)
+                                        }
+                                    },
+                                    size = 44.dp,
+                                    iconSize = 19.dp,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item(key = "bento_grid") {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            BentoCollectionCard(
+                                icon = ZIcons.HeartFilled,
+                                title = "Liked songs",
+                                subtitle = "${liked.size} tracks",
+                                onClick = { section = LibSection.LIKED },
+                                modifier = Modifier.weight(1f),
+                            )
+                            BentoCollectionCard(
+                                icon = ZIcons.Offline,
+                                title = "Offline",
+                                subtitle = "${downloads.size} downloaded",
+                                onClick = { section = LibSection.DOWNLOADS },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            BentoCollectionCard(
+                                icon = ZIcons.Refresh,
+                                title = "Cached",
+                                subtitle = "Instant playback",
+                                onClick = { onNavigate(Route.History) },
+                                modifier = Modifier.weight(1f),
+                            )
+                            BentoCollectionCard(
+                                icon = ZIcons.Trend,
+                                title = "My top 50",
+                                subtitle = "All time",
+                                onClick = { onNavigate(Route.Stats) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+
+                if (playlists.isNotEmpty()) {
+                    item(key = "overview_pl_head") {
+                        Spacer(Modifier.height(6.dp))
+                        SectionHeader(
+                            title = "Playlists",
+                            actionLabel = "All",
+                            onAction = { section = LibSection.PLAYLISTS },
+                        )
+                    }
+                    items(playlists.take(5), key = { "ov_${it.id}" }) { pl ->
+                        PlaylistListRow(
+                            title = pl.title,
+                            subtitle = listOfNotNull(pl.author, pl.countText).joinToString(" - "),
+                            artwork = pl.artwork,
+                            onClick = { onNavigate(Route.Playlist(pl.id, local = pl.local)) },
+                        )
+                    }
+                }
+            }
+
             LibSection.LIKED -> {
                 if (liked.isNotEmpty()) {
                     item(key = "liked_actions") {
@@ -202,10 +341,10 @@ fun viewlibrary(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
                         ) {
                             GlassPillButton(
-                                text = "Play All",
+                                text = "Play all",
                                 icon = ZIcons.Play,
                                 primary = true,
                                 onClick = { hub.pilot.playtracks(liked, 0, "Liked Songs") },
@@ -218,7 +357,6 @@ fun viewlibrary(
                                 modifier = Modifier.weight(1f),
                             )
                         }
-                        Spacer(Modifier.height(6.dp))
                     }
                     items(liked, key = { it.id }) { song ->
                         SongRow(
@@ -235,7 +373,7 @@ fun viewlibrary(
                     }
                 } else {
                     item(key = "empty_liked") {
-                        EmptyGlassNotice("Tap the heart on any song to save it to Liked Songs.")
+                        EmptyGlassNotice("Tap the heart icon on any song to save it to Liked songs.")
                     }
                 }
             }
@@ -247,23 +385,22 @@ fun viewlibrary(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
                         ) {
                             GlassPillButton(
-                                text = "Play Offline",
+                                text = "Play offline",
                                 icon = ZIcons.Play,
                                 primary = true,
-                                onClick = { hub.pilot.playtracks(downloads, 0, "Downloads", fetchRadio = false) },
+                                onClick = { hub.pilot.playtracks(downloads, 0, "Offline", fetchRadio = false) },
                                 modifier = Modifier.weight(1f),
                             )
                             GlassPillButton(
                                 text = "Shuffle",
                                 icon = ZIcons.Shuffle,
-                                onClick = { hub.pilot.playtracks(downloads.shuffled(), 0, "Downloads", fetchRadio = false) },
+                                onClick = { hub.pilot.playtracks(downloads.shuffled(), 0, "Offline", fetchRadio = false) },
                                 modifier = Modifier.weight(1f),
                             )
                         }
-                        Spacer(Modifier.height(6.dp))
                     }
                     items(downloads, key = { it.id }) { song ->
                         SongRow(
@@ -272,7 +409,7 @@ fun viewlibrary(
                             downloaded = true,
                             onClick = {
                                 val idx = downloads.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-                                hub.pilot.playtracks(downloads, idx, "Downloads", fetchRadio = false)
+                                hub.pilot.playtracks(downloads, idx, "Offline", fetchRadio = false)
                             },
                             onMore = { onTrackMenu(song) },
                             modifier = Modifier.padding(horizontal = 8.dp),
@@ -291,7 +428,7 @@ fun viewlibrary(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
                     ) {
                         GlassPillButton(
                             text = "New Playlist",
@@ -307,7 +444,6 @@ fun viewlibrary(
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    Spacer(Modifier.height(8.dp))
                 }
                 if (playlists.isEmpty()) {
                     item(key = "empty_pl") {
@@ -315,30 +451,12 @@ fun viewlibrary(
                     }
                 } else {
                     items(playlists, key = { it.id }) { pl ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onNavigate(Route.Playlist(pl.id, local = pl.local)) }
-                                .padding(horizontal = 18.dp, vertical = 9.dp),
-                        ) {
-                            ArtImage(
-                                url = pl.artwork,
-                                shape = RoundedCornerShape(14.dp),
-                                fallbackIcon = ZIcons.Playlist,
-                                modifier = Modifier.size(56.dp),
-                            )
-                            Spacer(Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(pl.title, style = MaterialTheme.typography.titleMedium, color = glass.ink)
-                                Text(
-                                    listOfNotNull(pl.author, pl.countText).joinToString(" • "),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = glass.inkSecondary,
-                                )
-                            }
-                            Icon(ZIcons.ChevronRight, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
-                        }
+                        PlaylistListRow(
+                            title = pl.title,
+                            subtitle = listOfNotNull(pl.author, pl.countText).joinToString(" - "),
+                            artwork = pl.artwork,
+                            onClick = { onNavigate(Route.Playlist(pl.id, local = pl.local)) },
+                        )
                     }
                 }
             }
@@ -403,10 +521,90 @@ fun viewlibrary(
 }
 
 @Composable
+private fun BentoCollectionCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val glass = LocalGlass.current
+    GlassBox(
+        shape = RoundedCornerShape(24.dp),
+        onClick = onClick,
+        contentPadding = PaddingValues(16.dp),
+        modifier = modifier,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(glass.accentSoft),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = glass.accent,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = glass.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = glass.inkSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlaylistListRow(
+    title: String,
+    subtitle: String,
+    artwork: String?,
+    onClick: () -> Unit,
+) {
+    val glass = LocalGlass.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 9.dp),
+    ) {
+        ArtImage(
+            url = artwork,
+            shape = RoundedCornerShape(14.dp),
+            fallbackIcon = ZIcons.Playlist,
+            modifier = Modifier.size(56.dp),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = glass.ink, maxLines = 1)
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = glass.inkSecondary, maxLines = 1)
+        }
+        Icon(ZIcons.ChevronRight, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
+    }
+}
+
+@Composable
 private fun EmptyGlassNotice(text: String) {
     val glass = LocalGlass.current
     GlassBox(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(22.dp),
         contentPadding = PaddingValues(20.dp),
         modifier = Modifier
             .fillMaxWidth()

@@ -18,7 +18,7 @@ data class AlbumSummary(
         return listOfNotNull(
             names.takeIf { it.isNotBlank() },
             year?.toString(),
-        ).joinToString(" · ")
+        ).joinToString(" - ")
     }
 }
 

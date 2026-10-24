@@ -44,6 +44,7 @@
 -dontwarn io.ktor.**
 -keep class com.metrolist.innertubex.** { *; }
 -keep class com.metrolist.quackjs.** { *; }
+-dontwarn dev.chrisbanes.haze.**
 
 -dontwarn javax.servlet.**
 -dontwarn org.bouncycastle.**

@@ -18,6 +18,7 @@ coroutinesGuava = "1.11.0"
 innertubex = "v0.11.0"
 desugaring = "2.1.5"
 tinypinyin = "2.0.3"
+haze = "2.0.1"
 
 [libraries]
 gradle = { module = "com.android.tools.build:gradle", version.ref = "agp" }
@@ -49,6 +50,8 @@ guava = { module = "com.google.guava:guava", version.ref = "guava" }
 coroutines-guava = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-guava", version.ref = "coroutinesGuava" }
 innertubex = { module = "com.github.MetrolistGroup.innertubex:innertubex", version.ref = "innertubex" }
 tinypinyin = { module = "com.github.promeG:tinypinyin", version.ref = "tinypinyin" }
+haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
+haze-blur = { module = "dev.chrisbanes.haze:haze-blur", version.ref = "haze" }
 desugaring = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugaring" }
 
 [plugins]

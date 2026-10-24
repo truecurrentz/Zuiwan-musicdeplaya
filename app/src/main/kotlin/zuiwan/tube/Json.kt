@@ -79,7 +79,7 @@ fun List<RunToken>.splitgroups(): List<List<RunToken>> {
     val groups = mutableListOf<MutableList<RunToken>>()
     var current = mutableListOf<RunToken>()
     for (token in this) {
-        if (token.text.trim() in setOf("•", "·", "|")) {
+        if (token.text.trim() in setOf("\u2022", "\u00B7", "|")) {
             if (current.isNotEmpty()) {
                 groups += current
                 current = mutableListOf()

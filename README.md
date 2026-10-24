@@ -4,12 +4,12 @@
 
 # Zuiwan
 
-### Glass YouTube Music client for Android
+### Frosted Glass YouTube Music client for Android
 
 [![Build](https://img.shields.io/github/actions/workflow/status/truecurrentz/Zuiwan/build.yml?style=for-the-badge&labelColor=0d1117)](https://github.com/truecurrentz/Zuiwan/actions/workflows/build.yml)
 [![License](https://img.shields.io/github/license/truecurrentz/Zuiwan?style=for-the-badge&labelColor=0d1117)](LICENSE)
 
-[**Download**](#download) · [**Features**](#features) · [**Build**](#build) · [**License**](#license)
+[**Download**](#download) | [**Features**](#features) | [**Build**](#build) | [**License**](#license)
 
 </div>
 
@@ -50,16 +50,16 @@
 - Word-by-word & line-synced live lyrics (BetterLyrics, LrcLib, KuGou, YouTube Music)
 - Automatic CJK & Cyrillic romanization
 - Synced & plain lyric modes with tap-to-seek
-- Personalized Quick Picks, Moods, New Releases & Global Charts
+- Quick Picks, Keep Listening, Explore, Unique Songs, Moods & Charts
 
 </td>
     <td width="50%" valign="top">
 
-#### Library & Glass UI
-- Proportional Glassmorphism interface with **Dark Glass**, **White Glass**, and **Pure Black** themes
-- Dynamic cover-art ambient lighting & color extraction
-- Local playlists, `.m3u` import/export & full `.zip` backup/restore
-- YouTube Music account login, cloud library sync & Last.fm scrobbling
+#### Frosted Glass UI & Library
+- iOS-inspired Frosted Glass interface with **Dark** and **White** themes
+- Real-time GPU backdrop blur on connected floating bars and immersive full-bleed player
+- Pure geometric vector icon suite across every screen and sheet
+- Local playlists, `.m3u` import/export, YouTube Music cloud sync, Last.fm scrobbling & `.zip` backup/restore
 
 </td>
   </tr>

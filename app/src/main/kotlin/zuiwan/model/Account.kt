@@ -28,9 +28,8 @@ data class SessionData(
         get() = cookie.contains("SAPISID")
 }
 
+@Serializable
 enum class ThemeChoice(val label: String) {
-    SYSTEM("System"),
-    DARK("Dark Glass"),
-    LIGHT("White Glass"),
-    BLACK("Pure Black"),
+    DARK("Dark"),
+    WHITE("White"),
 }

@@ -72,7 +72,7 @@ class LyricsExtractor(
             val raw = entry.syncedLyrics?.takeIf { it.isNotBlank() }
                 ?: entry.plainLyrics?.takeIf { it.isNotBlank() }
                 ?: return@mapNotNull null
-            val label = listOfNotNull(entry.trackName, entry.artistName).joinToString(" • ").ifBlank { "LrcLib" }
+            val label = listOfNotNull(entry.trackName, entry.artistName).joinToString(" - ").ifBlank { "LrcLib" }
             LyricParser.parselyrics(raw, label, romanize)
         }
     }

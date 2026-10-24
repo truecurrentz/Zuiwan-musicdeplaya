@@ -1,10 +1,6 @@
 package zuiwan.ui
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -21,42 +17,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import zuiwan.theme.LocalGlass
-import kotlin.math.PI
-import kotlin.math.sin
 
 @Composable
-fun WaveSlider(
+fun ThinSlider(
     progress: Float,
-    playing: Boolean,
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    activeColor: Color? = null,
+    trackColor: Color? = null,
+    idleThickness: Dp = 6.dp,
+    activeThickness: Dp = 11.dp,
 ) {
     val glass = LocalGlass.current
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(progress) }
-    val activeProgress = (if (dragging) dragValue else progress).coerceIn(0f, 1f)
+    val value = (if (dragging) dragValue else progress).coerceIn(0f, 1f)
 
-    val infinite = rememberInfiniteTransition(label = "wave")
-    val phase by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = (2.0 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "wavePhase",
+    val barHeight by animateDpAsState(
+        targetValue = if (dragging) activeThickness else idleThickness,
+        animationSpec = tween(160),
+        label = "barThickness",
     )
+
+    val fill = activeColor ?: glass.ink
+    val rail = trackColor ?: glass.inkMuted.copy(alpha = 0.28f)
 
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(34.dp)
+            .height(26.dp)
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
                     val frac = (offset.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f)
@@ -83,54 +77,42 @@ fun WaveSlider(
                 )
             },
     ) {
-        val midY = size.height / 2f
-        val pad = 8.dp.toPx()
-        val usable = (size.width - pad * 2f).coerceAtLeast(1f)
-        val thumbX = pad + usable * activeProgress
-        val strokePx = 3.2.dp.toPx()
+        val hPx = barHeight.toPx()
+        val topY = (size.height - hPx) / 2f
+        val radius = CornerRadius(hPx / 2f, hPx / 2f)
 
-        drawLine(
-            color = glass.inkMuted.copy(alpha = 0.30f),
-            start = Offset(thumbX, midY),
-            end = Offset(size.width - pad, midY),
-            strokeWidth = strokePx,
-            cap = StrokeCap.Round,
+        drawRoundRect(
+            color = rail,
+            topLeft = Offset(0f, topY),
+            size = Size(size.width, hPx),
+            cornerRadius = radius,
         )
 
-        if (playing && !dragging && activeProgress > 0.02f) {
-            val waveAmp = 3.5.dp.toPx()
-            val waveLen = 28.dp.toPx()
-            val path = Path().apply {
-                moveTo(pad, midY)
-                var x = pad
-                while (x <= thumbX) {
-                    val y = midY + sin(((x - pad) / waveLen) * (2f * PI.toFloat()) - phase) * waveAmp
-                    lineTo(x, y)
-                    x += 3f
-                }
-            }
-            drawPath(
-                path = path,
-                color = glass.accent,
-                style = Stroke(width = strokePx, cap = StrokeCap.Round),
-            )
-        } else if (thumbX > pad) {
-            drawLine(
-                color = glass.accent,
-                start = Offset(pad, midY),
-                end = Offset(thumbX, midY),
-                strokeWidth = strokePx,
-                cap = StrokeCap.Round,
+        val activeWidth = (size.width * value).coerceAtLeast(if (value > 0f) hPx else 0f)
+        if (activeWidth > 0f) {
+            drawRoundRect(
+                color = fill,
+                topLeft = Offset(0f, topY),
+                size = Size(activeWidth.coerceAtMost(size.width), hPx),
+                cornerRadius = radius,
             )
         }
-
-        val pillW = if (dragging) 8.dp.toPx() else 6.dp.toPx()
-        val pillH = if (dragging) 22.dp.toPx() else 16.dp.toPx()
-        drawRoundRect(
-            color = glass.accent,
-            topLeft = Offset(thumbX - pillW / 2f, midY - pillH / 2f),
-            size = Size(pillW, pillH),
-            cornerRadius = CornerRadius(pillW / 2f, pillW / 2f),
-        )
     }
+}
+
+@Composable
+fun WaveSlider(
+    progress: Float,
+    playing: Boolean,
+    onSeek: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val glass = LocalGlass.current
+    ThinSlider(
+        progress = progress,
+        onSeek = onSeek,
+        activeColor = glass.accent,
+        trackColor = glass.inkMuted.copy(alpha = 0.25f),
+        modifier = modifier,
+    )
 }

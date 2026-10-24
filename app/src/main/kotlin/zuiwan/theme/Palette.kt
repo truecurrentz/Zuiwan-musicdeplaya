@@ -23,15 +23,16 @@ import kotlinx.coroutines.withContext
 fun rememberartcolors(
     artworkUrl: String?,
     enabled: Boolean,
+    dark: Boolean,
 ): Pair<Color, Color> {
-    val defaultPrimary = Color(0xFF38BDF8)
-    val defaultSecondary = Color(0xFF818CF8)
+    val defaultPrimary = if (dark) Color(0xFFF2A7B5) else Color(0xFF007AFF)
+    val defaultSecondary = if (dark) Color(0xFF8FB8FF) else Color(0xFF5856D6)
 
-    var targetPrimary by remember { mutableStateOf(defaultPrimary) }
-    var targetSecondary by remember { mutableStateOf(defaultSecondary) }
+    var targetPrimary by remember(dark) { mutableStateOf(defaultPrimary) }
+    var targetSecondary by remember(dark) { mutableStateOf(defaultSecondary) }
     val context = LocalContext.current
 
-    LaunchedEffect(artworkUrl, enabled) {
+    LaunchedEffect(artworkUrl, enabled, dark) {
         if (!enabled || artworkUrl.isNullOrBlank()) {
             targetPrimary = defaultPrimary
             targetSecondary = defaultSecondary
@@ -46,29 +47,30 @@ fun rememberartcolors(
                     .build()
                 val res = SingletonImageLoader.get(context).execute(req)
                 val bmp = res.image?.toBitmap() ?: return@runCatching
-                val palette = Palette.from(bmp).maximumColorCount(16).generate()
-                val primaryInt = palette.getVibrantColor(
-                    palette.getLightVibrantColor(
-                        palette.getDominantColor(0xFF38BDF8.toInt()),
-                    ),
-                )
-                val secondaryInt = palette.getMutedColor(
-                    palette.getDarkVibrantColor(0xFF818CF8.toInt()),
-                )
-                targetPrimary = Color(primaryInt)
-                targetSecondary = Color(secondaryInt)
+                val palette = Palette.from(bmp).maximumColorCount(20).generate()
+                val primarySwatch =
+                    (if (dark) palette.lightVibrantSwatch else palette.vibrantSwatch)
+                        ?: palette.vibrantSwatch
+                        ?: palette.mutedSwatch
+                        ?: palette.dominantSwatch
+                val secondarySwatch =
+                    palette.mutedSwatch
+                        ?: palette.darkVibrantSwatch
+                        ?: palette.dominantSwatch
+                targetPrimary = primarySwatch?.let { Color(it.rgb) } ?: defaultPrimary
+                targetSecondary = secondarySwatch?.let { Color(it.rgb) } ?: defaultSecondary
             }
         }
     }
 
     val animatedPrimary by animateColorAsState(
         targetValue = targetPrimary,
-        animationSpec = tween(650),
+        animationSpec = tween(550),
         label = "accentPrimary",
     )
     val animatedSecondary by animateColorAsState(
         targetValue = targetSecondary,
-        animationSpec = tween(650),
+        animationSpec = tween(550),
         label = "accentSecondary",
     )
     return animatedPrimary to animatedSecondary

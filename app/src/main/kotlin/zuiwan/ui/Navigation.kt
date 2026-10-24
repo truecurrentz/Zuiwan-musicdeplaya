@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -52,9 +54,8 @@ sealed interface Route {
 
 enum class MainTab(val route: Route, val label: String, val icon: ImageVector) {
     HOME(Route.Home, "Home", ZIcons.Home),
-    EXPLORE(Route.Explore, "Explore", ZIcons.Explore),
     SEARCH(Route.Search, "Search", ZIcons.Search),
-    LIBRARY(Route.Library, "Library", ZIcons.Library),
+    LIBRARY(Route.Library, "Library", ZIcons.Grid),
 }
 
 class NavStack {
@@ -68,8 +69,7 @@ class NavStack {
             for (i in stack.lastIndex downTo 0) {
                 when (stack[i]) {
                     Route.Home -> return MainTab.HOME
-                    Route.Explore -> return MainTab.EXPLORE
-                    Route.Search -> return MainTab.SEARCH
+                    Route.Search, Route.Explore -> return MainTab.SEARCH
                     Route.Library -> return MainTab.LIBRARY
                     else -> {}
                 }
@@ -99,24 +99,40 @@ class NavStack {
 fun FloatingGlassDock(
     activeTab: MainTab,
     onSelect: (MainTab) -> Unit,
+    connectedAbove: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val glass = LocalGlass.current
+    val dockShape = if (connectedAbove) {
+        RoundedCornerShape(
+            topStart = 12.dp,
+            topEnd = 12.dp,
+            bottomStart = 28.dp,
+            bottomEnd = 28.dp,
+        )
+    } else {
+        RoundedCornerShape(28.dp)
+    }
+
     Box(
+        contentAlignment = Alignment.Center,
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         GlassBox(
-            shape = RoundedCornerShape(28.dp),
+            shape = dockShape,
             strong = true,
+            frosted = true,
             elevation = 16.dp,
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier
+                .widthIn(max = 520.dp)
+                .fillMaxWidth(),
         ) {
             Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -124,34 +140,47 @@ fun FloatingGlassDock(
                     val selected = tab == activeTab
                     val pillColor by animateColorAsState(
                         targetValue = if (selected) glass.accentSoft else Color.Transparent,
-                        animationSpec = tween(240),
+                        animationSpec = tween(220),
                         label = "dockPill",
                     )
                     val iconTint by animateColorAsState(
+                        targetValue = if (selected) glass.accent else glass.ink,
+                        animationSpec = tween(220),
+                        label = "dockIcon",
+                    )
+                    val labelTint by animateColorAsState(
                         targetValue = if (selected) glass.accent else glass.inkSecondary,
-                        animationSpec = tween(240),
-                        label = "dockTint",
+                        animationSpec = tween(220),
+                        label = "dockLabel",
                     )
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                         modifier = Modifier
                             .weight(1f)
-                            .height(54.dp)
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(pillColor)
+                            .height(56.dp)
+                            .clip(RoundedCornerShape(20.dp))
                             .clickable { onSelect(tab) },
                     ) {
-                        Icon(
-                            imageVector = tab.icon,
-                            contentDescription = tab.label,
-                            tint = iconTint,
-                            modifier = Modifier.size(21.dp),
-                        )
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .width(56.dp)
+                                .height(30.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(pillColor),
+                        ) {
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = tab.label,
+                                tint = iconTint,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                         Text(
                             text = tab.label,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = iconTint,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = labelTint,
                             modifier = Modifier.padding(top = 3.dp),
                         )
                     }

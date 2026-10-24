@@ -296,7 +296,7 @@ class TubeClient {
                     .mapNotNull { g ->
                         val cue = g.transcriptCueGroupRenderer?.cues?.firstOrNull()?.transcriptCueRenderer ?: return@mapNotNull null
                         val ms = cue.startOffsetMs ?: return@mapNotNull null
-                        val txt = cue.cue?.simpleText?.trim('♪', ' ')?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                        val txt = cue.cue?.simpleText?.trim('\u266A', ' ')?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                         "[%02d:%02d.%03d]%s".format(ms / 60_000, (ms / 1_000) % 60, ms % 1_000, txt)
                     }
                 if (lines.size >= 3) lines.joinToString("\n") else null

@@ -131,7 +131,12 @@ fun QueueSheet(onDismiss: () -> Unit) {
                                             .clip(CircleShape)
                                             .clickable { hub.pilot.movequeue(idx, idx - 1) },
                                     ) {
-                                        Text("↑", color = glass.inkSecondary, style = MaterialTheme.typography.titleMedium)
+                                        Icon(
+                                            imageVector = ZIcons.ArrowUp,
+                                            contentDescription = "Move up",
+                                            tint = glass.inkSecondary,
+                                            modifier = Modifier.size(16.dp),
+                                        )
                                     }
                                 }
                                 if (idx < state.queue.lastIndex) {
@@ -142,7 +147,12 @@ fun QueueSheet(onDismiss: () -> Unit) {
                                             .clip(CircleShape)
                                             .clickable { hub.pilot.movequeue(idx, idx + 1) },
                                     ) {
-                                        Text("↓", color = glass.inkSecondary, style = MaterialTheme.typography.titleMedium)
+                                        Icon(
+                                            imageVector = ZIcons.ArrowDown,
+                                            contentDescription = "Move down",
+                                            tint = glass.inkSecondary,
+                                            modifier = Modifier.size(16.dp),
+                                        )
                                     }
                                 }
                                 Box(
@@ -154,7 +164,7 @@ fun QueueSheet(onDismiss: () -> Unit) {
                                 ) {
                                     Icon(
                                         imageVector = ZIcons.Close,
-                                        contentDescription = null,
+                                        contentDescription = "Remove",
                                         tint = glass.inkMuted,
                                         modifier = Modifier.size(16.dp),
                                     )

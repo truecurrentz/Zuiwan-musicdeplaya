@@ -2,20 +2,15 @@ package zuiwan.screen
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -30,15 +25,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import zuiwan.model.ArtistDetail
 import zuiwan.model.FeedItem
 import zuiwan.model.Track
+import zuiwan.model.upscaleart
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.ArtImage
-import zuiwan.ui.GlassBox
+import zuiwan.ui.DetailHero
 import zuiwan.ui.GlassIconButton
 import zuiwan.ui.GlassPillButton
 import zuiwan.ui.GlassTopBar
@@ -77,19 +73,10 @@ fun viewartist(
         contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        item(key = "top") {
-            GlassTopBar(title = "Artist", onBack = onBack) {
-                detail?.artist?.let { artist ->
-                    GlassIconButton(
-                        icon = if (isSaved) ZIcons.HeartFilled else ZIcons.Heart,
-                        active = isSaved,
-                        onClick = { hub.togglesaveartist(artist) },
-                    )
-                }
+        if (loading && detail == null) {
+            item(key = "top") {
+                GlassTopBar(title = "Artist", onBack = onBack)
             }
-        }
-
-        if (loading) {
             item(key = "loader") {
                 Box(
                     contentAlignment = Alignment.Center,
@@ -103,48 +90,22 @@ fun viewartist(
         }
 
         detail?.let { info ->
+            val topSongs = info.sections
+                .flatMap { it.items }
+                .mapNotNull { (it as? FeedItem.SongCard)?.track }
+            val meta = listOfNotNull(info.listeners, info.artist.subscribers).joinToString(" - ")
+
             item(key = "hero") {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 12.dp),
-                ) {
-                    ArtImage(
-                        url = info.artist.artwork,
-                        shape = CircleShape,
-                        fallbackIcon = ZIcons.Artist,
-                        modifier = Modifier.size(184.dp),
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        text = info.artist.name,
-                        style = MaterialTheme.typography.displayLarge,
-                        color = glass.ink,
-                        textAlign = TextAlign.Center,
-                    )
-                    val meta = listOfNotNull(info.artist.subscribers, info.listeners).joinToString(" • ")
-                    if (meta.isNotBlank()) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = meta,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = glass.inkSecondary,
-                        )
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        GlassPillButton(
-                            text = "Shuffle",
+                DetailHero(
+                    title = info.artist.name,
+                    artworkUrl = upscaleart(info.artist.artwork, 1080),
+                    fallbackIcon = ZIcons.Artist,
+                    onBack = onBack,
+                    metadata = meta.ifBlank { null },
+                    primaryActions = {
+                        GlassIconButton(
                             icon = ZIcons.Shuffle,
-                            primary = true,
                             onClick = {
-                                val topSongs = info.sections
-                                    .flatMap { it.items }
-                                    .mapNotNull { (it as? FeedItem.SongCard)?.track }
                                 if (topSongs.isNotEmpty()) {
                                     hub.pilot.playtracks(topSongs.shuffled(), 0, info.artist.name)
                                 } else if (!info.shufflePlaylistId.isNullOrBlank()) {
@@ -156,10 +117,34 @@ fun viewartist(
                                     }
                                 }
                             },
-                            modifier = Modifier.weight(1f),
+                            size = 46.dp,
+                            iconSize = 20.dp,
                         )
                         GlassPillButton(
-                            text = "Radio",
+                            text = "Play",
+                            icon = ZIcons.Play,
+                            highContrast = true,
+                            onClick = {
+                                if (topSongs.isNotEmpty()) {
+                                    hub.pilot.playtracks(topSongs, 0, info.artist.name)
+                                } else if (!info.shufflePlaylistId.isNullOrBlank()) {
+                                    scope.launch {
+                                        val next = hub.tube.loadnext(playlistId = info.shufflePlaylistId).getOrNull()
+                                        if (next != null && next.tracks.isNotEmpty()) {
+                                            hub.pilot.playtracks(next.tracks, 0, info.artist.name)
+                                        }
+                                    }
+                                }
+                            },
+                        )
+                        GlassIconButton(
+                            icon = if (isSaved) ZIcons.Check else ZIcons.Heart,
+                            active = isSaved,
+                            onClick = { hub.togglesaveartist(info.artist) },
+                            size = 46.dp,
+                            iconSize = 20.dp,
+                        )
+                        GlassIconButton(
                             icon = ZIcons.Radio,
                             onClick = {
                                 val radioId = info.radioPlaylistId ?: info.shufflePlaylistId
@@ -172,9 +157,26 @@ fun viewartist(
                                     }
                                 }
                             },
-                            modifier = Modifier.weight(1f),
+                            size = 46.dp,
+                            iconSize = 20.dp,
                         )
-                    }
+                    },
+                )
+            }
+
+            if (!info.description.isNullOrBlank()) {
+                item(key = "bio_excerpt") {
+                    Text(
+                        text = info.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = glass.inkSecondary,
+                        textAlign = TextAlign.Center,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 8.dp),
+                    )
                 }
             }
 
@@ -202,7 +204,7 @@ fun viewartist(
                                 hub.pilot.playtracks(songs, pos, info.artist.name)
                             },
                             onMore = { onTrackMenu(song) },
-                            modifier = Modifier.padding(horizontal = 8.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp),
                         )
                     }
                 } else {
@@ -225,26 +227,6 @@ fun viewartist(
                                 )
                             }
                         }
-                    }
-                }
-            }
-
-            if (!info.description.isNullOrBlank()) {
-                item(key = "about") {
-                    Spacer(Modifier.height(14.dp))
-                    SectionHeader(title = "About")
-                    GlassBox(
-                        shape = RoundedCornerShape(20.dp),
-                        contentPadding = PaddingValues(16.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 18.dp),
-                    ) {
-                        Text(
-                            text = info.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = glass.inkSecondary,
-                        )
                     }
                 }
             }

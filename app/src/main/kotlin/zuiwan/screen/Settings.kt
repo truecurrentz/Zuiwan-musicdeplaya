@@ -94,7 +94,7 @@ fun viewsettings(
         if (uri != null) {
             scope.launch {
                 hub.backup.restorebackup(uri)
-                    .onSuccess { statusMsg = "Backup restored — restart app to reload DB" }
+                    .onSuccess { statusMsg = "Backup restored - restart app to reload DB" }
                     .onFailure { statusMsg = it.message ?: "Restore failed" }
             }
         }
@@ -176,13 +176,70 @@ fun viewsettings(
             }
         }
 
+        item(key = "theme_head") {
+            SectionHeader(title = "Appearance", subtitle = "Dark & White Glass")
+        }
+        item(key = "theme_card") {
+            GlassBox(
+                shape = RoundedCornerShape(24.dp),
+                elevated = true,
+                contentPadding = PaddingValues(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 4.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text("Theme", style = MaterialTheme.typography.titleMedium, color = glass.ink)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        GlassPillButton(
+                            text = "Dark",
+                            icon = ZIcons.Moon,
+                            primary = settings.theme == ThemeChoice.DARK,
+                            onClick = {
+                                scope.launch { hub.store.updatesettings { it.copy(theme = ThemeChoice.DARK) } }
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        GlassPillButton(
+                            text = "White",
+                            icon = ZIcons.Sun,
+                            primary = settings.theme == ThemeChoice.WHITE,
+                            onClick = {
+                                scope.launch { hub.store.updatesettings { it.copy(theme = ThemeChoice.WHITE) } }
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+
+                    SettingToggleRow(
+                        title = "Frosted Backdrop Blur",
+                        subtitle = "Real-time glass blur on floating bars and immersive player",
+                        checked = settings.blurEnabled,
+                    ) { v ->
+                        scope.launch { hub.store.updatesettings { it.copy(blurEnabled = v) } }
+                    }
+
+                    SettingToggleRow(
+                        title = "Dynamic Artwork Accent",
+                        subtitle = "Tint glass highlights from the playing cover art",
+                        checked = settings.dynamicColors,
+                    ) { v ->
+                        scope.launch { hub.store.updatesettings { it.copy(dynamicColors = v) } }
+                    }
+                }
+            }
+        }
+
         item(key = "account_head") {
+            Spacer(Modifier.height(10.dp))
             SectionHeader(title = "YouTube Music Account", subtitle = "Cloud Sync")
         }
         item(key = "account_card") {
             GlassBox(
-                shape = RoundedCornerShape(22.dp),
-                elevated = true,
+                shape = RoundedCornerShape(24.dp),
                 contentPadding = PaddingValues(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -239,7 +296,7 @@ fun viewsettings(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Guest Session", style = MaterialTheme.typography.titleMedium, color = glass.ink)
                             Text(
-                                "Sign in to sync your liked tracks & personalized mixes",
+                                "Sign in to sync your liked tracks and personalized mixes",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = glass.inkSecondary,
                             )
@@ -256,58 +313,13 @@ fun viewsettings(
             }
         }
 
-        item(key = "theme_head") {
-            Spacer(Modifier.height(10.dp))
-            SectionHeader(title = "Glass Appearance", subtitle = "Dark & White Themes")
-        }
-        item(key = "theme_card") {
-            GlassBox(
-                shape = RoundedCornerShape(22.dp),
-                contentPadding = PaddingValues(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 4.dp),
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text("Theme Palette", style = MaterialTheme.typography.titleMedium, color = glass.ink)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    ) {
-                        listOf(
-                            ThemeChoice.DARK to "Dark Glass",
-                            ThemeChoice.LIGHT to "White Glass",
-                            ThemeChoice.BLACK to "Pure Black",
-                            ThemeChoice.SYSTEM to "System",
-                        ).forEach { (choice, label) ->
-                            GlassChip(
-                                label = label,
-                                selected = settings.theme == choice,
-                                onClick = {
-                                    scope.launch { hub.store.updatesettings { it.copy(theme = choice) } }
-                                },
-                            )
-                        }
-                    }
-
-                    SettingToggleRow(
-                        title = "Dynamic Artwork Accent",
-                        subtitle = "Tint glass highlights from the playing cover art",
-                        checked = settings.dynamicColors,
-                    ) { v ->
-                        scope.launch { hub.store.updatesettings { it.copy(dynamicColors = v) } }
-                    }
-                }
-            }
-        }
-
         item(key = "audio_head") {
             Spacer(Modifier.height(10.dp))
             SectionHeader(title = "Audio & Playback", subtitle = "Engine & DSP")
         }
         item(key = "audio_card") {
             GlassBox(
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(24.dp),
                 contentPadding = PaddingValues(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -315,7 +327,10 @@ fun viewsettings(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text("Streaming Quality", style = MaterialTheme.typography.titleMedium, color = glass.ink)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    ) {
                         listOf(
                             QualityMode.HIGH to "High (Opus 160k)",
                             QualityMode.AUTO to "Auto",
@@ -357,7 +372,7 @@ fun viewsettings(
 
                     SettingToggleRow(
                         title = "Persistent Queue",
-                        subtitle = "Restore queue & position on app launch",
+                        subtitle = "Restore queue and position on app launch",
                         checked = settings.persistentQueue,
                     ) { v ->
                         scope.launch { hub.store.updatesettings { it.copy(persistentQueue = v) } }
@@ -406,7 +421,7 @@ fun viewsettings(
         }
         item(key = "lyrics_card") {
             GlassBox(
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(24.dp),
                 contentPadding = PaddingValues(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -423,7 +438,7 @@ fun viewsettings(
 
                     SettingToggleRow(
                         title = "Pause Listening History",
-                        subtitle = "Stop recording plays & stats locally",
+                        subtitle = "Stop recording plays and stats locally",
                         checked = settings.pauseHistory,
                     ) { v ->
                         scope.launch { hub.store.updatesettings { it.copy(pauseHistory = v) } }
@@ -465,7 +480,7 @@ fun viewsettings(
         }
         item(key = "storage_card") {
             GlassBox(
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(24.dp),
                 contentPadding = PaddingValues(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()

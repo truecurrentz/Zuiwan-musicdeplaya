@@ -1,7 +1,6 @@
 package zuiwan.theme
 
 import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -16,22 +15,17 @@ import zuiwan.model.ThemeChoice
 fun ZuiwanTheme(
     choice: ThemeChoice,
     dynamicColors: Boolean,
+    blurEnabled: Boolean = true,
     artworkUrl: String?,
     content: @Composable () -> Unit,
 ) {
-    val systemDark = isSystemInDarkTheme()
-    val useDark = when (choice) {
-        ThemeChoice.SYSTEM -> systemDark
-        ThemeChoice.LIGHT -> false
-        ThemeChoice.DARK, ThemeChoice.BLACK -> true
-    }
-    val pureBlack = choice == ThemeChoice.BLACK
-    val (artPrimary, artSecondary) = rememberartcolors(artworkUrl, dynamicColors)
+    val useDark = choice == ThemeChoice.DARK
+    val (artPrimary, artSecondary) = rememberartcolors(artworkUrl, dynamicColors, useDark)
 
     val glass = if (useDark) {
-        darkglass(artPrimary, artSecondary, pureBlack = pureBlack)
+        darkglass(artPrimary, artSecondary, blurEnabled = blurEnabled)
     } else {
-        lightglass(artPrimary, artSecondary)
+        whiteglass(artPrimary, artSecondary, blurEnabled = blurEnabled)
     }
 
     val colorScheme = if (useDark) {

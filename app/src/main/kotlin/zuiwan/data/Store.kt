@@ -22,6 +22,7 @@ private val Context.zuiwanPrefs: DataStore<Preferences> by preferencesDataStore(
 data class AppSettings(
     val theme: ThemeChoice = ThemeChoice.DARK,
     val dynamicColors: Boolean = true,
+    val blurEnabled: Boolean = true,
     val quality: QualityMode = QualityMode.HIGH,
     val normalizeAudio: Boolean = true,
     val skipSilence: Boolean = false,
@@ -40,6 +41,7 @@ class PrefStore(private val context: Context) {
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
+        coerceInputValues = true
     }
 
     private val settingsKey = stringPreferencesKey("settings_json")

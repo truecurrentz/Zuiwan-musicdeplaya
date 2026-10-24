@@ -11,7 +11,11 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 object ZIcons {
-    private fun stroke(name: String, block: PathBuilder.() -> Unit): ImageVector =
+    private fun stroke(
+        name: String,
+        width: Float = 2f,
+        block: PathBuilder.() -> Unit,
+    ): ImageVector =
         ImageVector.Builder(
             name = name,
             defaultWidth = 24.dp,
@@ -21,7 +25,7 @@ object ZIcons {
         ).path(
             fill = null,
             stroke = SolidColor(Color.White),
-            strokeLineWidth = 2f,
+            strokeLineWidth = width,
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round,
             pathBuilder = block,
@@ -44,20 +48,22 @@ object ZIcons {
             pathBuilder = block,
         ).build()
 
+    val Brand: ImageVector = stroke("Brand", width = 2.6f) {
+        moveTo(5.2f, 6.2f)
+        horizontalLineTo(18.8f)
+        lineTo(6.4f, 17.8f)
+        horizontalLineTo(18.8f)
+    }
+
     val Home: ImageVector = stroke("Home") {
-        moveTo(3.5f, 10.5f)
-        lineTo(12f, 3.5f)
-        lineTo(20.5f, 10.5f)
-        moveTo(5.5f, 9.2f)
-        verticalLineTo(19.5f)
-        curveTo(5.5f, 20.05f, 5.95f, 20.5f, 6.5f, 20.5f)
-        horizontalLineTo(17.5f)
-        curveTo(18.05f, 20.5f, 18.5f, 20.05f, 18.5f, 19.5f)
-        verticalLineTo(9.2f)
-        moveTo(9.8f, 20.5f)
-        verticalLineTo(14.2f)
-        horizontalLineTo(14.2f)
-        verticalLineTo(20.5f)
+        moveTo(12f, 3f)
+        arcTo(9f, 9f, 0f, true, true, 11.99f, 3f)
+        close()
+        moveTo(15.8f, 8.2f)
+        lineTo(13.8f, 13.8f)
+        lineTo(8.2f, 15.8f)
+        lineTo(10.2f, 10.2f)
+        close()
     }
 
     val Explore: ImageVector = stroke("Explore") {
@@ -79,61 +85,191 @@ object ZIcons {
         lineTo(20.5f, 20.5f)
     }
 
-    val Library: ImageVector = stroke("Library") {
-        moveTo(4.5f, 5f)
-        verticalLineTo(19f)
-        moveTo(9.5f, 5f)
-        verticalLineTo(19f)
-        moveTo(14.2f, 5.5f)
-        lineTo(19.5f, 19f)
-    }
-
-    val Play: ImageVector = solid("Play") {
-        moveTo(7.5f, 5.1f)
-        curveTo(7.5f, 4.25f, 8.42f, 3.73f, 9.15f, 4.17f)
-        lineTo(19.3f, 10.97f)
-        curveTo(19.98f, 11.43f, 19.98f, 12.57f, 19.3f, 13.03f)
-        lineTo(9.15f, 19.83f)
-        curveTo(8.42f, 20.27f, 7.5f, 19.75f, 7.5f, 18.9f)
-        close()
-    }
-
-    val Pause: ImageVector = solid("Pause") {
-        moveTo(6.5f, 5f)
+    val Grid: ImageVector = stroke("Grid") {
+        moveTo(4.5f, 4.5f)
         horizontalLineTo(10.2f)
-        verticalLineTo(19f)
-        horizontalLineTo(6.5f)
+        verticalLineTo(10.2f)
+        horizontalLineTo(4.5f)
         close()
-        moveTo(13.8f, 5f)
-        horizontalLineTo(17.5f)
-        verticalLineTo(19f)
+        moveTo(13.8f, 4.5f)
+        horizontalLineTo(19.5f)
+        verticalLineTo(10.2f)
+        horizontalLineTo(13.8f)
+        close()
+        moveTo(4.5f, 13.8f)
+        horizontalLineTo(10.2f)
+        verticalLineTo(19.5f)
+        horizontalLineTo(4.5f)
+        close()
+        moveTo(13.8f, 13.8f)
+        horizontalLineTo(19.5f)
+        verticalLineTo(19.5f)
         horizontalLineTo(13.8f)
         close()
     }
 
-    val Next: ImageVector = solid("Next") {
-        moveTo(5.5f, 5.4f)
-        lineTo(14.8f, 12f)
-        lineTo(5.5f, 18.6f)
+    val Library: ImageVector = Grid
+
+    val Sparkles: ImageVector = stroke("Sparkles", width = 1.9f) {
+        moveTo(11f, 3.5f)
+        lineTo(12.6f, 8.4f)
+        lineTo(17.5f, 10f)
+        lineTo(12.6f, 11.6f)
+        lineTo(11f, 16.5f)
+        lineTo(9.4f, 11.6f)
+        lineTo(4.5f, 10f)
+        lineTo(9.4f, 8.4f)
         close()
-        moveTo(16.5f, 5.5f)
-        horizontalLineTo(18.8f)
-        verticalLineTo(18.5f)
-        horizontalLineTo(16.5f)
+        moveTo(18.2f, 14.5f)
+        lineTo(19f, 17f)
+        lineTo(21.5f, 17.8f)
+        lineTo(19f, 18.6f)
+        lineTo(18.2f, 21f)
+        lineTo(17.4f, 18.6f)
+        lineTo(15f, 17.8f)
+        lineTo(17.4f, 17f)
         close()
     }
 
-    val Prev: ImageVector = solid("Prev") {
-        moveTo(18.5f, 5.4f)
-        lineTo(9.2f, 12f)
-        lineTo(18.5f, 18.6f)
+    val Globe: ImageVector = stroke("Globe") {
+        moveTo(12f, 3.5f)
+        arcTo(8.5f, 8.5f, 0f, true, true, 11.99f, 3.5f)
         close()
-        moveTo(5.2f, 5.5f)
-        horizontalLineTo(7.5f)
-        verticalLineTo(18.5f)
-        horizontalLineTo(5.2f)
+        moveTo(3.8f, 12f)
+        horizontalLineTo(20.2f)
+        moveTo(12f, 3.6f)
+        curveTo(14.8f, 6.2f, 14.8f, 17.8f, 12f, 20.4f)
+        moveTo(12f, 3.6f)
+        curveTo(9.2f, 6.2f, 9.2f, 17.8f, 12f, 20.4f)
+    }
+
+    val Waveform: ImageVector = stroke("Waveform", width = 2.2f) {
+        moveTo(4.5f, 10f)
+        verticalLineTo(14f)
+        moveTo(8.2f, 6.5f)
+        verticalLineTo(17.5f)
+        moveTo(12f, 4f)
+        verticalLineTo(20f)
+        moveTo(15.8f, 7.5f)
+        verticalLineTo(16.5f)
+        moveTo(19.5f, 10f)
+        verticalLineTo(14f)
+    }
+
+    val Star: ImageVector = stroke("Star", width = 1.9f) {
+        moveTo(12f, 3.6f)
+        lineTo(14.5f, 8.8f)
+        lineTo(20.2f, 9.6f)
+        lineTo(16.1f, 13.6f)
+        lineTo(17.1f, 19.3f)
+        lineTo(12f, 16.6f)
+        lineTo(6.9f, 19.3f)
+        lineTo(7.9f, 13.6f)
+        lineTo(3.8f, 9.6f)
+        lineTo(9.5f, 8.8f)
         close()
     }
+
+    val Offline: ImageVector = stroke("Offline") {
+        moveTo(12f, 3.5f)
+        arcTo(8.5f, 8.5f, 0f, true, true, 11.99f, 3.5f)
+        close()
+        moveTo(8.6f, 12.2f)
+        lineTo(11f, 14.6f)
+        lineTo(15.6f, 9.8f)
+    }
+
+    val Trend: ImageVector = stroke("Trend") {
+        moveTo(4f, 16.5f)
+        lineTo(9.5f, 11f)
+        lineTo(13.2f, 14.7f)
+        lineTo(20f, 7.8f)
+        moveTo(15f, 7.8f)
+        horizontalLineTo(20f)
+        verticalLineTo(12.8f)
+    }
+
+    val Note: ImageVector = stroke("Note") {
+        moveTo(9f, 17.5f)
+        arcTo(2.4f, 2.4f, 0f, true, true, 8.99f, 17.5f)
+        close()
+        moveTo(17f, 15.5f)
+        arcTo(2.4f, 2.4f, 0f, true, true, 16.99f, 15.5f)
+        close()
+        moveTo(11.4f, 17.5f)
+        verticalLineTo(6.5f)
+        lineTo(19.4f, 4.8f)
+        verticalLineTo(15.5f)
+    }
+
+    val Play: ImageVector = solid("Play") {
+        moveTo(7.2f, 4.9f)
+        curveTo(7.2f, 4.05f, 8.15f, 3.53f, 8.88f, 3.98f)
+        lineTo(19.4f, 10.95f)
+        curveTo(20.08f, 11.41f, 20.08f, 12.59f, 19.4f, 13.05f)
+        lineTo(8.88f, 20.02f)
+        curveTo(8.15f, 20.47f, 7.2f, 19.95f, 7.2f, 19.1f)
+        close()
+    }
+
+    val Pause: ImageVector = solid("Pause") {
+        moveTo(6.2f, 4.6f)
+        curveTo(6.2f, 4f, 6.7f, 3.5f, 7.3f, 3.5f)
+        horizontalLineTo(9.7f)
+        curveTo(10.3f, 3.5f, 10.8f, 4f, 10.8f, 4.6f)
+        verticalLineTo(19.4f)
+        curveTo(10.8f, 20f, 10.3f, 20.5f, 9.7f, 20.5f)
+        horizontalLineTo(7.3f)
+        curveTo(6.7f, 20.5f, 6.2f, 20f, 6.2f, 19.4f)
+        close()
+        moveTo(13.2f, 4.6f)
+        curveTo(13.2f, 4f, 13.7f, 3.5f, 14.3f, 3.5f)
+        horizontalLineTo(16.7f)
+        curveTo(17.3f, 3.5f, 17.8f, 4f, 17.8f, 4.6f)
+        verticalLineTo(19.4f)
+        curveTo(17.8f, 20f, 17.3f, 20.5f, 16.7f, 20.5f)
+        horizontalLineTo(14.3f)
+        curveTo(13.7f, 20.5f, 13.2f, 20f, 13.2f, 19.4f)
+        close()
+    }
+
+    val FastForward: ImageVector = solid("FastForward") {
+        moveTo(3.2f, 6.4f)
+        curveTo(3.2f, 5.7f, 4f, 5.3f, 4.6f, 5.7f)
+        lineTo(12.2f, 11.2f)
+        curveTo(12.7f, 11.6f, 12.7f, 12.4f, 12.2f, 12.8f)
+        lineTo(4.6f, 18.3f)
+        curveTo(4f, 18.7f, 3.2f, 18.3f, 3.2f, 17.6f)
+        close()
+        moveTo(12.4f, 6.4f)
+        curveTo(12.4f, 5.7f, 13.2f, 5.3f, 13.8f, 5.7f)
+        lineTo(21.4f, 11.2f)
+        curveTo(21.9f, 11.6f, 21.9f, 12.4f, 21.4f, 12.8f)
+        lineTo(13.8f, 18.3f)
+        curveTo(13.2f, 18.7f, 12.4f, 18.3f, 12.4f, 17.6f)
+        close()
+    }
+
+    val FastRewind: ImageVector = solid("FastRewind") {
+        moveTo(20.8f, 6.4f)
+        curveTo(20.8f, 5.7f, 20f, 5.3f, 19.4f, 5.7f)
+        lineTo(11.8f, 11.2f)
+        curveTo(11.3f, 11.6f, 11.3f, 12.4f, 11.8f, 12.8f)
+        lineTo(19.4f, 18.3f)
+        curveTo(20f, 18.7f, 20.8f, 18.3f, 20.8f, 17.6f)
+        close()
+        moveTo(11.6f, 6.4f)
+        curveTo(11.6f, 5.7f, 10.8f, 5.3f, 10.2f, 5.7f)
+        lineTo(2.6f, 11.2f)
+        curveTo(2.1f, 11.6f, 2.1f, 12.4f, 2.6f, 12.8f)
+        lineTo(10.2f, 18.3f)
+        curveTo(10.8f, 18.7f, 11.6f, 18.3f, 11.6f, 17.6f)
+        close()
+    }
+
+    val Next: ImageVector = FastForward
+
+    val Prev: ImageVector = FastRewind
 
     val Shuffle: ImageVector = stroke("Shuffle") {
         moveTo(4f, 7f)
@@ -212,38 +348,84 @@ object ZIcons {
     }
 
     val Queue: ImageVector = stroke("Queue") {
-        moveTo(4f, 7f)
-        horizontalLineTo(15f)
+        moveTo(4f, 6.5f)
+        horizontalLineTo(4.2f)
+        moveTo(8f, 6.5f)
+        horizontalLineTo(20f)
         moveTo(4f, 12f)
-        horizontalLineTo(15f)
-        moveTo(4f, 17f)
-        horizontalLineTo(11f)
-        moveTo(17f, 12f)
-        verticalLineTo(18.5f)
-        moveTo(17f, 12f)
-        lineTo(20f, 13.2f)
-        moveTo(15.5f, 18.5f)
-        arcTo(1.5f, 1.5f, 0f, true, true, 15.49f, 18.5f)
+        horizontalLineTo(4.2f)
+        moveTo(8f, 12f)
+        horizontalLineTo(20f)
+        moveTo(4f, 17.5f)
+        horizontalLineTo(4.2f)
+        moveTo(8f, 17.5f)
+        horizontalLineTo(20f)
     }
 
     val Lyrics: ImageVector = stroke("Lyrics") {
-        moveTo(5f, 5.5f)
+        moveTo(5f, 5f)
         horizontalLineTo(19f)
-        curveTo(19.8f, 5.5f, 20.5f, 6.2f, 20.5f, 7f)
-        verticalLineTo(15.5f)
-        curveTo(20.5f, 16.3f, 19.8f, 17f, 19f, 17f)
-        horizontalLineTo(10f)
-        lineTo(5.5f, 20f)
+        curveTo(19.9f, 5f, 20.6f, 5.7f, 20.6f, 6.6f)
+        verticalLineTo(15.4f)
+        curveTo(20.6f, 16.3f, 19.9f, 17f, 19f, 17f)
+        horizontalLineTo(10.2f)
+        lineTo(5.6f, 20.2f)
         verticalLineTo(17f)
         horizontalLineTo(5f)
-        curveTo(4.2f, 17f, 3.5f, 16.3f, 3.5f, 15.5f)
-        verticalLineTo(7f)
-        curveTo(3.5f, 6.2f, 4.2f, 5.5f, 5f, 5.5f)
+        curveTo(4.1f, 17f, 3.4f, 16.3f, 3.4f, 15.4f)
+        verticalLineTo(6.6f)
+        curveTo(3.4f, 5.7f, 4.1f, 5f, 5f, 5f)
         close()
-        moveTo(8f, 9.5f)
-        horizontalLineTo(16f)
-        moveTo(8f, 13f)
-        horizontalLineTo(13.5f)
+        moveTo(9.2f, 9.8f)
+        verticalLineTo(12.2f)
+        moveTo(14.8f, 9.8f)
+        verticalLineTo(12.2f)
+    }
+
+    val VolumeMute: ImageVector = stroke("VolumeMute", width = 1.9f) {
+        moveTo(5f, 9.5f)
+        horizontalLineTo(8.2f)
+        lineTo(12.8f, 5.8f)
+        verticalLineTo(18.2f)
+        lineTo(8.2f, 14.5f)
+        horizontalLineTo(5f)
+        close()
+        moveTo(16.2f, 9.8f)
+        lineTo(20f, 14.2f)
+        moveTo(20f, 9.8f)
+        lineTo(16.2f, 14.2f)
+    }
+
+    val VolumeHigh: ImageVector = stroke("VolumeHigh", width = 1.9f) {
+        moveTo(4.5f, 9.5f)
+        horizontalLineTo(7.8f)
+        lineTo(12.5f, 5.8f)
+        verticalLineTo(18.2f)
+        lineTo(7.8f, 14.5f)
+        horizontalLineTo(4.5f)
+        close()
+        moveTo(15.8f, 9.2f)
+        arcTo(4f, 4f, 0f, false, true, 15.8f, 14.8f)
+        moveTo(18.2f, 6.8f)
+        arcTo(7.2f, 7.2f, 0f, false, true, 18.2f, 17.2f)
+    }
+
+    val Speaker: ImageVector = stroke("Speaker", width = 1.9f) {
+        moveTo(7f, 4f)
+        horizontalLineTo(17f)
+        curveTo(18.1f, 4f, 19f, 4.9f, 19f, 6f)
+        verticalLineTo(18f)
+        curveTo(19f, 19.1f, 18.1f, 20f, 17f, 20f)
+        horizontalLineTo(7f)
+        curveTo(5.9f, 20f, 5f, 19.1f, 5f, 18f)
+        verticalLineTo(6f)
+        curveTo(5f, 4.9f, 5.9f, 4f, 7f, 4f)
+        close()
+        moveTo(12f, 11.5f)
+        arcTo(3.2f, 3.2f, 0f, true, true, 11.99f, 11.5f)
+        close()
+        moveTo(12f, 7.6f)
+        verticalLineTo(7.8f)
     }
 
     val Equalizer: ImageVector = stroke("Equalizer") {
@@ -307,6 +489,18 @@ object ZIcons {
         close()
     }
 
+    val MoreHoriz: ImageVector = solid("MoreHoriz") {
+        moveTo(6.2f, 10.3f)
+        arcTo(1.7f, 1.7f, 0f, true, true, 6.19f, 10.3f)
+        close()
+        moveTo(12f, 10.3f)
+        arcTo(1.7f, 1.7f, 0f, true, true, 11.99f, 10.3f)
+        close()
+        moveTo(17.8f, 10.3f)
+        arcTo(1.7f, 1.7f, 0f, true, true, 17.79f, 10.3f)
+        close()
+    }
+
     val Add: ImageVector = stroke("Add") {
         moveTo(12f, 5f)
         verticalLineTo(19f)
@@ -315,16 +509,42 @@ object ZIcons {
     }
 
     val Close: ImageVector = stroke("Close") {
-        moveTo(6f, 6f)
-        lineTo(18f, 18f)
-        moveTo(18f, 6f)
-        lineTo(6f, 18f)
+        moveTo(6.5f, 6.5f)
+        lineTo(17.5f, 17.5f)
+        moveTo(17.5f, 6.5f)
+        lineTo(6.5f, 17.5f)
     }
 
     val Back: ImageVector = stroke("Back") {
-        moveTo(15f, 5f)
-        lineTo(8f, 12f)
-        lineTo(15f, 19f)
+        moveTo(19f, 12f)
+        horizontalLineTo(5f)
+        moveTo(11f, 6f)
+        lineTo(5f, 12f)
+        lineTo(11f, 18f)
+    }
+
+    val ArrowForward: ImageVector = stroke("ArrowForward") {
+        moveTo(5f, 12f)
+        horizontalLineTo(19f)
+        moveTo(13f, 6f)
+        lineTo(19f, 12f)
+        lineTo(13f, 18f)
+    }
+
+    val ArrowUp: ImageVector = stroke("ArrowUp") {
+        moveTo(12f, 18.5f)
+        verticalLineTo(5.5f)
+        moveTo(7f, 10.5f)
+        lineTo(12f, 5.5f)
+        lineTo(17f, 10.5f)
+    }
+
+    val ArrowDown: ImageVector = stroke("ArrowDown") {
+        moveTo(12f, 5.5f)
+        verticalLineTo(18.5f)
+        moveTo(7f, 13.5f)
+        lineTo(12f, 18.5f)
+        lineTo(17f, 13.5f)
     }
 
     val ChevronDown: ImageVector = stroke("ChevronDown") {
@@ -350,14 +570,12 @@ object ZIcons {
     }
 
     val History: ImageVector = stroke("History") {
-        moveTo(4.5f, 8.5f)
-        verticalLineTo(4.5f)
-        horizontalLineTo(8.5f)
-        moveTo(5.2f, 7.8f)
-        arcTo(8.2f, 8.2f, 0f, true, true, 4.3f, 13.5f)
-        moveTo(12f, 8f)
+        moveTo(12f, 3.5f)
+        arcTo(8.5f, 8.5f, 0f, true, true, 11.99f, 3.5f)
+        close()
+        moveTo(12f, 7.8f)
         verticalLineTo(12.4f)
-        lineTo(15f, 14.2f)
+        lineTo(15.2f, 14.3f)
     }
 
     val Stats: ImageVector = stroke("Stats") {
@@ -405,6 +623,14 @@ object ZIcons {
         horizontalLineTo(4.8f)
         moveTo(19.2f, 12f)
         horizontalLineTo(21f)
+        moveTo(5.6f, 5.6f)
+        lineTo(6.9f, 6.9f)
+        moveTo(17.1f, 17.1f)
+        lineTo(18.4f, 18.4f)
+        moveTo(18.4f, 5.6f)
+        lineTo(17.1f, 6.9f)
+        moveTo(6.9f, 17.1f)
+        lineTo(5.6f, 18.4f)
     }
 
     val Moon: ImageVector = stroke("Moon") {
@@ -460,19 +686,13 @@ object ZIcons {
     }
 
     val Share: ImageVector = stroke("Share") {
-        moveTo(16f, 5f)
-        arcTo(2.2f, 2.2f, 0f, true, true, 15.99f, 5f)
+        moveTo(14f, 6f)
+        lineTo(20f, 11.5f)
+        lineTo(14f, 17f)
+        verticalLineTo(13.5f)
+        curveTo(9f, 13.5f, 5.8f, 15.2f, 4f, 18.5f)
+        curveTo(4.8f, 12.8f, 8.2f, 9.2f, 14f, 9.2f)
         close()
-        moveTo(6f, 9.8f)
-        arcTo(2.2f, 2.2f, 0f, true, true, 5.99f, 9.8f)
-        close()
-        moveTo(16f, 14.6f)
-        arcTo(2.2f, 2.2f, 0f, true, true, 15.99f, 14.6f)
-        close()
-        moveTo(8f, 11f)
-        lineTo(14f, 8f)
-        moveTo(8f, 13f)
-        lineTo(14f, 16f)
     }
 
     val Trash: ImageVector = stroke("Trash") {

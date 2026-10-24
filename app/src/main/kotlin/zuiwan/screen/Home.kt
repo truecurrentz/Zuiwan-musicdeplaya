@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -31,11 +30,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import zuiwan.model.ArtistSummary
 import zuiwan.model.FeedItem
 import zuiwan.model.ThemeChoice
 import zuiwan.model.Track
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
+import zuiwan.ui.BrandBar
 import zuiwan.ui.GlassChip
 import zuiwan.ui.GlassIconButton
 import zuiwan.ui.GlassPillButton
@@ -60,7 +61,6 @@ fun viewhome(
     val error by hub.homeError.collectAsState()
     val selectedChip by hub.selectedChip.collectAsState()
     val history by hub.historyTracks.collectAsState()
-    val settings by hub.settings.collectAsState()
     val playback by hub.pilot.state.collectAsState()
 
     val listState = rememberLazyListState()
@@ -78,55 +78,48 @@ fun viewhome(
         }
     }
 
+    val keepListeningArtists = remember(history) {
+        history
+            .mapNotNull { track ->
+                val ref = track.artists.firstOrNull { !it.id.isNullOrBlank() } ?: return@mapNotNull null
+                ArtistSummary(
+                    id = ref.id!!,
+                    name = ref.name,
+                    artwork = track.artwork,
+                )
+            }
+            .distinctBy { it.id }
+            .take(8)
+    }
+
     LazyColumn(
         state = listState,
         contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
         item(key = "topbar") {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
-            ) {
-                Column {
-                    Text(
-                        text = "Zuiwan",
-                        style = MaterialTheme.typography.displayLarge,
-                        color = glass.ink,
-                    )
-                    Text(
-                        text = "Pure Glass Audio",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = glass.accent,
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassIconButton(
-                        icon = if (glass.isDark) ZIcons.Sun else ZIcons.Moon,
-                        onClick = {
-                            scope.launch {
-                                val next = if (glass.isDark) ThemeChoice.LIGHT else ThemeChoice.DARK
-                                hub.store.updatesettings { it.copy(theme = next) }
-                            }
-                        },
-                    )
-                    GlassIconButton(
-                        icon = ZIcons.Stats,
-                        onClick = { onNavigate(Route.Stats) },
-                    )
-                    GlassIconButton(
-                        icon = ZIcons.History,
-                        onClick = { onNavigate(Route.History) },
-                    )
-                    GlassIconButton(
-                        icon = ZIcons.Settings,
-                        onClick = { onNavigate(Route.Settings) },
-                    )
-                }
+            BrandBar {
+                GlassIconButton(
+                    icon = ZIcons.History,
+                    onClick = { onNavigate(Route.History) },
+                )
+                GlassIconButton(
+                    icon = ZIcons.Stats,
+                    onClick = { onNavigate(Route.Stats) },
+                )
+                GlassIconButton(
+                    icon = if (glass.isDark) ZIcons.Sun else ZIcons.Moon,
+                    onClick = {
+                        scope.launch {
+                            val next = if (glass.isDark) ThemeChoice.WHITE else ThemeChoice.DARK
+                            hub.store.updatesettings { it.copy(theme = next) }
+                        }
+                    },
+                )
+                GlassIconButton(
+                    icon = ZIcons.Settings,
+                    onClick = { onNavigate(Route.Settings) },
+                )
             }
         }
 
@@ -139,11 +132,6 @@ fun viewhome(
                         .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 18.dp, vertical = 6.dp),
                 ) {
-                    GlassChip(
-                        label = "All",
-                        selected = selectedChip == null,
-                        onClick = { hub.refreshhome(null) },
-                    )
                     feed.chips.forEach { chip ->
                         val active = selectedChip?.params == chip.params
                         GlassChip(
@@ -156,33 +144,57 @@ fun viewhome(
             }
         }
 
-        if (history.isNotEmpty() && selectedChip == null) {
-            item(key = "recent_header") {
-                Spacer(Modifier.height(6.dp))
+        if (history.isNotEmpty() && selectedChip == null && feed.shelves.none { it.title.contains("Quick", ignoreCase = true) }) {
+            item(key = "quick_recent_head") {
+                Spacer(Modifier.height(8.dp))
                 SectionHeader(
-                    title = "Jump Back In",
-                    subtitle = "Recent",
-                    actionLabel = "History",
-                    onAction = { onNavigate(Route.History) },
+                    title = "Quick picks",
+                    actionLabel = "Play all",
+                    onAction = { hub.pilot.playtracks(history.take(20), 0, "Quick picks", fetchRadio = true) },
                 )
             }
-            item(key = "recent_row") {
-                val pairs = history.take(12).chunked(2)
+            item(key = "quick_recent_row") {
+                val cols = history.take(16).chunked(4)
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(pairs) { col ->
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            col.forEach { song ->
+                    items(cols) { group ->
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            group.forEach { song ->
                                 QuickPickTile(
                                     track = song,
                                     playing = playback.current?.id == song.id,
-                                    onClick = { hub.pilot.audioplay(song, "Recent") },
+                                    onClick = { hub.pilot.audioplay(song, "Quick picks") },
                                     onMore = { onTrackMenu(song) },
                                 )
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        if (keepListeningArtists.isNotEmpty() && selectedChip == null) {
+            item(key = "keep_listening_head") {
+                Spacer(Modifier.height(10.dp))
+                SectionHeader(
+                    title = "Keep listening",
+                    actionLabel = "History",
+                    onAction = { onNavigate(Route.History) },
+                )
+            }
+            item(key = "keep_listening_row") {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    items(keepListeningArtists, key = { it.id }) { artist ->
+                        MediaCard(
+                            item = FeedItem.ArtistCard(artist),
+                            width = 148.dp,
+                            onClick = { onNavigate(Route.Artist(artist.id)) },
+                        )
                     }
                 }
             }
@@ -226,7 +238,7 @@ fun viewhome(
         feed.shelves.forEachIndexed { shelfIdx, shelf ->
             val allSongs = shelf.items.all { it is FeedItem.SongCard }
             item(key = "shelf_head_$shelfIdx") {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
                 SectionHeader(
                     title = shelf.title,
                     subtitle = shelf.subtitle,
@@ -249,13 +261,13 @@ fun viewhome(
             item(key = "shelf_body_$shelfIdx") {
                 if (allSongs) {
                     val songs = shelf.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
-                    val columns = songs.chunked(3)
+                    val columns = songs.chunked(4)
                     LazyRow(
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         items(columns) { group ->
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 group.forEach { song ->
                                     QuickPickTile(
                                         track = song,

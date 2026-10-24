@@ -13,12 +13,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -55,6 +57,9 @@ import zuiwan.ui.ZIcons
 @Composable
 fun viewlyrics(
     modifier: Modifier = Modifier,
+    showHeaderControls: Boolean = true,
+    externalFinderOpen: Boolean = false,
+    onDismissExternalFinder: () -> Unit = {},
 ) {
     val hub = LocalHub.current
     val glass = LocalGlass.current
@@ -66,13 +71,20 @@ fun viewlyrics(
     val settings by hub.settings.collectAsState()
 
     var plainMode by remember { mutableStateOf(false) }
-    var showFinder by remember { mutableStateOf(false) }
+    var internalFinder by remember { mutableStateOf(false) }
+    val finderVisible = internalFinder || externalFinderOpen
     var searchQuery by remember(state.current?.id) {
         mutableStateOf(
             state.current?.let { "${it.title} ${it.artistline()}" }.orEmpty(),
         )
     }
     var candidates by remember { mutableStateOf<List<LyricPayload>>(emptyList()) }
+
+    LaunchedEffect(finderVisible) {
+        if (finderVisible && candidates.isEmpty() && searchQuery.isNotBlank()) {
+            candidates = hub.lyrics.searchlyrics(searchQuery, settings.romanizeLyrics)
+        }
+    }
 
     val activeIdx = if (payload.synced && !plainMode) {
         LyricParser.activeline(payload.lines, state.positionMs)
@@ -83,13 +95,18 @@ fun viewlyrics(
     val listState = rememberLazyListState()
     LaunchedEffect(activeIdx, plainMode) {
         if (activeIdx >= 0 && !plainMode && !listState.isScrollInProgress) {
-            listState.animateScrollToItem((activeIdx - 1).coerceAtLeast(0))
+            listState.animateScrollToItem((activeIdx - 2).coerceAtLeast(0))
         }
     }
 
-    if (showFinder) {
+    fun closefinder() {
+        internalFinder = false
+        onDismissExternalFinder()
+    }
+
+    if (finderVisible) {
         AlertDialog(
-            onDismissRequest = { showFinder = false },
+            onDismissRequest = ::closefinder,
             containerColor = glass.glassStrong,
             titleContentColor = glass.ink,
             textContentColor = glass.ink,
@@ -123,7 +140,7 @@ fun viewlyrics(
                                 scope.launch {
                                     hub.lyrics.applylyrics(track.id, cand)
                                     hub.pilot.refreshlyrics(track, force = false)
-                                    showFinder = false
+                                    closefinder()
                                 }
                             },
                             contentPadding = PaddingValues(10.dp),
@@ -143,19 +160,15 @@ fun viewlyrics(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showFinder = false }) {
+                TextButton(onClick = ::closefinder) {
                     Text("Close", color = glass.accent)
                 }
             },
         )
     }
 
-    GlassBox(
-        shape = RoundedCornerShape(26.dp),
-        contentPadding = PaddingValues(16.dp),
-        modifier = modifier.fillMaxSize(),
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize()) {
+        if (showHeaderControls) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -178,12 +191,7 @@ fun viewlyrics(
                         icon = ZIcons.Search,
                         size = 34.dp,
                         iconSize = 16.dp,
-                        onClick = {
-                            showFinder = true
-                            scope.launch {
-                                candidates = hub.lyrics.searchlyrics(searchQuery, settings.romanizeLyrics)
-                            }
-                        },
+                        onClick = { internalFinder = true },
                     )
                     GlassIconButton(
                         icon = ZIcons.Refresh,
@@ -193,60 +201,78 @@ fun viewlyrics(
                     )
                 }
             }
-
             Spacer(Modifier.height(10.dp))
+        }
 
-            if (loading) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    CircularProgressIndicator(color = glass.accent)
+        if (loading) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                CircularProgressIndicator(color = glass.accent)
+            }
+        } else if (payload.lines.isEmpty()) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = ZIcons.Lyrics,
+                        contentDescription = null,
+                        tint = glass.inkMuted,
+                        modifier = Modifier.size(38.dp),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "No lyrics found",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = glass.inkSecondary,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Tap the search button above to choose a lyric match",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = glass.inkMuted,
+                    )
                 }
-            } else if (payload.lines.isEmpty()) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "No lyrics found",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = glass.inkSecondary,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = "Tap the search button above to pick a lyric match",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = glass.inkMuted,
-                        )
-                    }
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(vertical = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                itemsIndexed(payload.lines) { idx, line ->
+                    LyricLineView(
+                        line = line,
+                        active = !plainMode && idx == activeIdx,
+                        plainMode = plainMode || !payload.synced,
+                        positionMs = state.positionMs,
+                        showRomanized = settings.romanizeLyrics,
+                        onSeek = {
+                            if (payload.synced) hub.pilot.seekto(line.timeMs)
+                        },
+                    )
                 }
-            } else {
-                LazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(vertical = 28.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    itemsIndexed(payload.lines) { idx, line ->
-                        LyricLineView(
-                            line = line,
-                            active = !plainMode && idx == activeIdx,
-                            plainMode = plainMode || !payload.synced,
-                            positionMs = state.positionMs,
-                            showRomanized = settings.romanizeLyrics,
-                            onSeek = {
-                                if (payload.synced) hub.pilot.seekto(line.timeMs)
-                            },
-                        )
-                    }
-                    item {
+                item {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                    ) {
                         Text(
                             text = "Source: ${payload.source}",
                             style = MaterialTheme.typography.labelSmall,
                             color = glass.inkMuted,
-                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                        GlassChip(
+                            label = if (plainMode) "Synced" else "Plain",
+                            selected = false,
+                            onClick = { plainMode = !plainMode },
                         )
                     }
                 }
@@ -269,7 +295,7 @@ private fun LyricLineView(
         targetValue = when {
             plainMode -> glass.ink
             active -> glass.ink
-            else -> glass.inkMuted.copy(alpha = 0.52f)
+            else -> glass.inkMuted.copy(alpha = 0.42f)
         },
         animationSpec = tween(220),
         label = "lyricColor",
@@ -280,15 +306,28 @@ private fun LyricLineView(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onSeek)
-            .padding(vertical = 4.dp, horizontal = 4.dp),
+            .padding(vertical = 4.dp, horizontal = 2.dp),
     ) {
-        if (active && line.words.isNotEmpty() && !plainMode) {
+        if (line.text.isBlank()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(vertical = 4.dp),
+            ) {
+                Icon(
+                    imageVector = ZIcons.Note,
+                    contentDescription = null,
+                    tint = if (active) glass.ink else glass.inkMuted.copy(alpha = 0.45f),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        } else if (active && line.words.isNotEmpty() && !plainMode) {
             val styled = buildAnnotatedString {
                 line.words.forEach { w ->
                     val sung = positionMs >= w.startMs
                     withStyle(
                         SpanStyle(
-                            color = if (sung) glass.accent else glass.ink.copy(alpha = 0.55f),
+                            color = if (sung) glass.ink else glass.ink.copy(alpha = 0.46f),
                             fontWeight = FontWeight.Bold,
                         ),
                     ) {
@@ -298,15 +337,15 @@ private fun LyricLineView(
             }
             Text(
                 text = styled,
-                fontSize = 23.sp,
-                lineHeight = 31.sp,
+                fontSize = 27.sp,
+                lineHeight = 35.sp,
             )
         } else {
             Text(
-                text = line.text.ifBlank { "♪" },
-                fontSize = if (active && !plainMode) 23.sp else 18.sp,
-                lineHeight = if (active && !plainMode) 31.sp else 25.sp,
-                fontWeight = if (active && !plainMode) FontWeight.Bold else FontWeight.SemiBold,
+                text = line.text,
+                fontSize = if (active && !plainMode) 27.sp else 23.sp,
+                lineHeight = if (active && !plainMode) 35.sp else 30.sp,
+                fontWeight = FontWeight.Bold,
                 color = baseColor,
             )
         }
@@ -314,9 +353,11 @@ private fun LyricLineView(
         if (showRomanized && !line.romanized.isNullOrBlank()) {
             Text(
                 text = line.romanized,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (active || plainMode) glass.accent.copy(alpha = 0.9f) else glass.inkMuted.copy(alpha = 0.45f),
-                modifier = Modifier.padding(top = 2.dp),
+                fontSize = 15.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (active || plainMode) glass.ink.copy(alpha = 0.85f) else glass.inkMuted.copy(alpha = 0.36f),
+                modifier = Modifier.padding(top = 3.dp),
             )
         }
 
@@ -324,7 +365,7 @@ private fun LyricLineView(
             Text(
                 text = line.translated,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (active || plainMode) glass.inkSecondary else glass.inkMuted.copy(alpha = 0.45f),
+                color = if (active || plainMode) glass.inkSecondary else glass.inkMuted.copy(alpha = 0.36f),
                 modifier = Modifier.padding(top = 2.dp),
             )
         }

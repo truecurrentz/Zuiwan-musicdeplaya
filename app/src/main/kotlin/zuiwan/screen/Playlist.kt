@@ -3,26 +3,20 @@ package zuiwan.screen
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,17 +32,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import zuiwan.model.PlaylistDetail
 import zuiwan.model.Track
+import zuiwan.model.upscaleart
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
-import zuiwan.ui.ArtImage
+import zuiwan.ui.DetailHero
 import zuiwan.ui.GlassIconButton
 import zuiwan.ui.GlassPillButton
 import zuiwan.ui.GlassTopBar
+import zuiwan.ui.SectionHeader
 import zuiwan.ui.SongRow
 import zuiwan.ui.ZIcons
 
@@ -69,6 +64,7 @@ fun viewplaylist(
     var loading by remember(playlistId, local) { mutableStateOf(true) }
     var showRename by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
+    val isLocal = local || playlistId.startsWith("local_")
 
     val listState = rememberLazyListState()
     val nearEnd by remember {
@@ -87,7 +83,7 @@ fun viewplaylist(
 
     suspend fun reload() {
         loading = true
-        detail = if (local || playlistId.startsWith("local_")) {
+        detail = if (isLocal) {
             hub.loadlocalplaylist(playlistId)
         } else {
             hub.tube.loadplaylist(playlistId).getOrNull()
@@ -101,7 +97,7 @@ fun viewplaylist(
 
     LaunchedEffect(nearEnd, detail?.continuation) {
         val cont = detail?.continuation
-        if (nearEnd && !cont.isNullOrBlank() && !loading && !local) {
+        if (nearEnd && !cont.isNullOrBlank() && !loading && !isLocal) {
             loading = true
             hub.tube.loadmoreplaylist(cont).onSuccess { (more, nextCont) ->
                 val cur = detail ?: return@onSuccess
@@ -152,31 +148,10 @@ fun viewplaylist(
         contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        item(key = "top") {
-            GlassTopBar(title = "Playlist", onBack = onBack) {
-                detail?.let { info ->
-                    GlassIconButton(
-                        icon = ZIcons.Download,
-                        onClick = { info.tracks.forEach { hub.vault.downloadtrack(it) } },
-                    )
-                    if (local || playlistId.startsWith("local_")) {
-                        GlassIconButton(
-                            icon = ZIcons.Share,
-                            onClick = { exportLauncher.launch("${info.playlist.title}.m3u") },
-                        )
-                        GlassIconButton(
-                            icon = ZIcons.Trash,
-                            onClick = {
-                                hub.deleteplaylist(playlistId)
-                                onBack()
-                            },
-                        )
-                    }
-                }
-            }
-        }
-
         if (loading && detail == null) {
+            item(key = "top") {
+                GlassTopBar(title = "Playlist", onBack = onBack)
+            }
             item(key = "loader") {
                 Box(
                     contentAlignment = Alignment.Center,
@@ -190,85 +165,87 @@ fun viewplaylist(
         }
 
         detail?.let { info ->
+            val heroArt = upscaleart(
+                info.playlist.artwork.ifBlank { info.tracks.firstOrNull()?.artwork },
+                1080,
+            )
+            val metaText = listOfNotNull(
+                info.playlist.author,
+                "${info.tracks.size} songs",
+            ).joinToString(" - ")
+
             item(key = "hero") {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 12.dp),
-                ) {
-                    ArtImage(
-                        url = info.playlist.artwork.ifBlank { info.tracks.firstOrNull()?.artwork },
-                        shape = RoundedCornerShape(24.dp),
-                        fallbackIcon = ZIcons.Playlist,
-                        modifier = Modifier.size(204.dp),
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        text = info.playlist.title,
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = glass.ink,
-                        textAlign = TextAlign.Center,
-                        modifier = if (local || playlistId.startsWith("local_")) {
-                            Modifier.clickable {
-                                renameText = info.playlist.title
-                                showRename = true
-                            }
-                        } else {
-                            Modifier
-                        },
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = listOfNotNull(info.playlist.author, "${info.tracks.size} songs").joinToString(" • "),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = glass.inkSecondary,
-                    )
-                    if (!info.description.isNullOrBlank()) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = info.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = glass.inkMuted,
-                            maxLines = 2,
-                            textAlign = TextAlign.Center,
+                DetailHero(
+                    title = info.playlist.title,
+                    artworkUrl = heroArt,
+                    fallbackIcon = ZIcons.Playlist,
+                    onBack = onBack,
+                    subtitle = info.description?.takeIf { it.isNotBlank() },
+                    metadata = metaText,
+                    onTitleClick = if (isLocal) {
+                        {
+                            renameText = info.playlist.title
+                            showRename = true
+                        }
+                    } else {
+                        null
+                    },
+                    topActions = {
+                        if (isLocal) {
+                            GlassIconButton(
+                                icon = ZIcons.Share,
+                                onClick = { exportLauncher.launch("${info.playlist.title}.m3u") },
+                            )
+                            GlassIconButton(
+                                icon = ZIcons.Trash,
+                                onClick = {
+                                    hub.deleteplaylist(playlistId)
+                                    onBack()
+                                },
+                            )
+                        }
+                    },
+                    primaryActions = {
+                        GlassIconButton(
+                            icon = ZIcons.Download,
+                            onClick = { info.tracks.forEach { hub.vault.downloadtrack(it) } },
+                            size = 46.dp,
+                            iconSize = 20.dp,
                         )
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        GlassPillButton(
-                            text = "Play",
-                            icon = ZIcons.Play,
-                            primary = true,
-                            onClick = {
-                                hub.pilot.playtracks(info.tracks, 0, info.playlist.title, fetchRadio = false)
-                            },
-                            modifier = Modifier.weight(1f),
-                        )
-                        GlassPillButton(
-                            text = "Shuffle",
+                        GlassIconButton(
                             icon = ZIcons.Shuffle,
                             onClick = {
                                 hub.pilot.playtracks(info.tracks.shuffled(), 0, info.playlist.title, fetchRadio = false)
                             },
-                            modifier = Modifier.weight(1f),
+                            size = 46.dp,
+                            iconSize = 20.dp,
                         )
-                    }
-                }
+                        GlassPillButton(
+                            text = "Play",
+                            icon = ZIcons.Play,
+                            highContrast = true,
+                            onClick = {
+                                hub.pilot.playtracks(info.tracks, 0, info.playlist.title, fetchRadio = false)
+                            },
+                        )
+                    },
+                )
+            }
+
+            item(key = "songs_head") {
+                SectionHeader(title = "Songs")
             }
 
             itemsIndexed(info.tracks, key = { idx, t -> "${t.id}_$idx" }) { idx, song ->
                 SongRow(
                     track = song,
                     playing = playback.current?.id == song.id,
+                    cardBackground = playback.current?.id == song.id,
                     onClick = {
                         hub.pilot.playtracks(info.tracks, idx, info.playlist.title, fetchRadio = false)
                     },
                     onMore = { onTrackMenu(song) },
-                    trailing = if (local || playlistId.startsWith("local_")) {
+                    trailing = if (isLocal) {
                         {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 if (idx > 0) {
@@ -285,7 +262,34 @@ fun viewplaylist(
                                                 scope.launch { reload() }
                                             },
                                     ) {
-                                        Text("↑", color = glass.inkSecondary)
+                                        Icon(
+                                            imageVector = ZIcons.ArrowUp,
+                                            contentDescription = "Move up",
+                                            tint = glass.inkSecondary,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                }
+                                if (idx < info.tracks.lastIndex) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                val list = info.tracks.map { it.id }.toMutableList()
+                                                val moved = list.removeAt(idx)
+                                                list.add(idx + 1, moved)
+                                                hub.reorderplaylist(playlistId, list)
+                                                scope.launch { reload() }
+                                            },
+                                    ) {
+                                        Icon(
+                                            imageVector = ZIcons.ArrowDown,
+                                            contentDescription = "Move down",
+                                            tint = glass.inkSecondary,
+                                            modifier = Modifier.size(16.dp),
+                                        )
                                     }
                                 }
                                 Box(
@@ -298,14 +302,19 @@ fun viewplaylist(
                                             scope.launch { reload() }
                                         },
                                 ) {
-                                    Icon(ZIcons.Close, null, tint = glass.inkMuted, modifier = Modifier.size(16.dp))
+                                    Icon(
+                                        imageVector = ZIcons.Close,
+                                        contentDescription = "Remove",
+                                        tint = glass.inkMuted,
+                                        modifier = Modifier.size(16.dp),
+                                    )
                                 }
                             }
                         }
                     } else {
                         null
                     },
-                    modifier = Modifier.padding(horizontal = 8.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
                 )
             }
         }

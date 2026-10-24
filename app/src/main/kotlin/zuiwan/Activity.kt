@@ -35,6 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import zuiwan.model.Track
 import zuiwan.screen.viewalbum
 import zuiwan.screen.viewartist
@@ -55,6 +57,7 @@ import zuiwan.sheet.TrackInfoSheet
 import zuiwan.sheet.TrackMenuSheet
 import zuiwan.state.Hub
 import zuiwan.state.LocalHub
+import zuiwan.theme.LocalHaze
 import zuiwan.theme.ZuiwanTheme
 import zuiwan.ui.AmbientBackdrop
 import zuiwan.ui.FloatingGlassDock
@@ -103,6 +106,7 @@ private fun ZuiwanRoot(
 
     val nav = remember { NavStack() }
     val stateHolder = rememberSaveableStateHolder()
+    val rootHaze = rememberHazeState()
 
     var playerExpanded by remember { mutableStateOf(false) }
     var menuTrack by remember { mutableStateOf<Track?>(null) }
@@ -151,163 +155,174 @@ private fun ZuiwanRoot(
     ZuiwanTheme(
         choice = settings.theme,
         dynamicColors = settings.dynamicColors,
+        blurEnabled = settings.blurEnabled,
         artworkUrl = playback.current?.artwork,
     ) {
-        val hasMini = playback.current != null
-        val contentBottom = PaddingValues(bottom = if (hasMini) 156.dp else 92.dp)
+        CompositionLocalProvider(LocalHaze provides rootHaze) {
+            val hasMini = playback.current != null
+            val contentBottom = PaddingValues(bottom = if (hasMini) 164.dp else 96.dp)
 
-        Box(modifier = Modifier.fillMaxSize()) {
-            AmbientBackdrop(artworkUrl = playback.current?.artwork, intense = false)
+            Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .hazeSource(rootHaze),
+                ) {
+                    AmbientBackdrop(artworkUrl = playback.current?.artwork, intense = false)
 
-            val activeRoute = nav.current
-            AnimatedContent(
-                targetState = activeRoute,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                contentKey = { it.key },
-                label = "routeTransition",
-            ) { route ->
-                stateHolder.SaveableStateProvider(route.key) {
-                    when (route) {
-                        Route.Home -> viewhome(
-                            onNavigate = nav::open,
-                            onTrackMenu = { menuTrack = it },
-                            bottomPadding = contentBottom,
-                        )
-                        Route.Explore -> viewexplore(
-                            onNavigate = nav::open,
-                            onTrackMenu = { menuTrack = it },
-                            bottomPadding = contentBottom,
-                        )
-                        Route.Search -> viewsearch(
-                            onNavigate = nav::open,
-                            onTrackMenu = { menuTrack = it },
-                            bottomPadding = contentBottom,
-                        )
-                        Route.Library -> viewlibrary(
-                            onNavigate = nav::open,
-                            onTrackMenu = { menuTrack = it },
-                            bottomPadding = contentBottom,
-                        )
-                        is Route.Album -> viewalbum(
-                            albumId = route.id,
-                            onBack = { nav.pop() },
-                            onNavigate = nav::open,
-                            onTrackMenu = { menuTrack = it },
-                            bottomPadding = contentBottom,
-                        )
-                        is Route.Artist -> viewartist(
-                            artistId = route.id,
-                            onBack = { nav.pop() },
-                            onNavigate = nav::open,
-                            onTrackMenu = { menuTrack = it },
-                            bottomPadding = contentBottom,
-                        )
-                        is Route.Playlist -> viewplaylist(
-                            playlistId = route.id,
-                            local = route.local,
-                            onBack = { nav.pop() },
-                            onTrackMenu = { menuTrack = it },
-                            bottomPadding = contentBottom,
-                        )
-                        is Route.Browse -> viewbrowse(
-                            browseId = route.browseId,
-                            params = route.params,
-                            title = route.title,
-                            onBack = { nav.pop() },
-                            onNavigate = nav::open,
-                            onTrackMenu = { menuTrack = it },
-                            bottomPadding = contentBottom,
-                        )
-                        Route.History -> viewhistory(
-                            onBack = { nav.pop() },
-                            onTrackMenu = { menuTrack = it },
-                            bottomPadding = contentBottom,
-                        )
-                        Route.Stats -> viewstats(
-                            onBack = { nav.pop() },
-                            onNavigate = nav::open,
-                            onTrackMenu = { menuTrack = it },
-                            bottomPadding = contentBottom,
-                        )
-                        Route.Equalizer -> viewequalizer(
-                            onBack = { nav.pop() },
-                            bottomPadding = contentBottom,
-                        )
-                        Route.Settings -> viewsettings(
-                            onBack = { nav.pop() },
-                            onNavigate = nav::open,
-                            bottomPadding = contentBottom,
-                        )
-                        Route.Login -> viewlogin(
-                            onBack = { nav.pop() },
+                    val activeRoute = nav.current
+                    AnimatedContent(
+                        targetState = activeRoute,
+                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                        contentKey = { it.key },
+                        label = "routeTransition",
+                    ) { route ->
+                        stateHolder.SaveableStateProvider(route.key) {
+                            when (route) {
+                                Route.Home -> viewhome(
+                                    onNavigate = nav::open,
+                                    onTrackMenu = { menuTrack = it },
+                                    bottomPadding = contentBottom,
+                                )
+                                Route.Explore -> viewexplore(
+                                    onNavigate = nav::open,
+                                    onTrackMenu = { menuTrack = it },
+                                    bottomPadding = contentBottom,
+                                )
+                                Route.Search -> viewsearch(
+                                    onNavigate = nav::open,
+                                    onTrackMenu = { menuTrack = it },
+                                    bottomPadding = contentBottom,
+                                )
+                                Route.Library -> viewlibrary(
+                                    onNavigate = nav::open,
+                                    onTrackMenu = { menuTrack = it },
+                                    bottomPadding = contentBottom,
+                                )
+                                is Route.Album -> viewalbum(
+                                    albumId = route.id,
+                                    onBack = { nav.pop() },
+                                    onNavigate = nav::open,
+                                    onTrackMenu = { menuTrack = it },
+                                    bottomPadding = contentBottom,
+                                )
+                                is Route.Artist -> viewartist(
+                                    artistId = route.id,
+                                    onBack = { nav.pop() },
+                                    onNavigate = nav::open,
+                                    onTrackMenu = { menuTrack = it },
+                                    bottomPadding = contentBottom,
+                                )
+                                is Route.Playlist -> viewplaylist(
+                                    playlistId = route.id,
+                                    local = route.local,
+                                    onBack = { nav.pop() },
+                                    onTrackMenu = { menuTrack = it },
+                                    bottomPadding = contentBottom,
+                                )
+                                is Route.Browse -> viewbrowse(
+                                    browseId = route.browseId,
+                                    params = route.params,
+                                    title = route.title,
+                                    onBack = { nav.pop() },
+                                    onNavigate = nav::open,
+                                    onTrackMenu = { menuTrack = it },
+                                    bottomPadding = contentBottom,
+                                )
+                                Route.History -> viewhistory(
+                                    onBack = { nav.pop() },
+                                    onTrackMenu = { menuTrack = it },
+                                    bottomPadding = contentBottom,
+                                )
+                                Route.Stats -> viewstats(
+                                    onBack = { nav.pop() },
+                                    onNavigate = nav::open,
+                                    onTrackMenu = { menuTrack = it },
+                                    bottomPadding = contentBottom,
+                                )
+                                Route.Equalizer -> viewequalizer(
+                                    onBack = { nav.pop() },
+                                    bottomPadding = contentBottom,
+                                )
+                                Route.Settings -> viewsettings(
+                                    onBack = { nav.pop() },
+                                    onNavigate = nav::open,
+                                    bottomPadding = contentBottom,
+                                )
+                                Route.Login -> viewlogin(
+                                    onBack = { nav.pop() },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (nav.current !is Route.Login) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth(),
+                    ) {
+                        if (hasMini) {
+                            val currentTrack = playback.current!!
+                            GlassMiniplayer(
+                                state = playback,
+                                liked = currentTrack.id in likedIds,
+                                onExpand = { playerExpanded = true },
+                                onTogglePlay = { hub.pilot.toggleplay() },
+                                onNext = { hub.pilot.skipnext() },
+                                onPrev = { hub.pilot.skipprev() },
+                                onLike = { hub.togglelike(currentTrack) },
+                                connectedBelow = true,
+                            )
+                            Spacer(Modifier.height(3.dp))
+                        }
+                        FloatingGlassDock(
+                            activeTab = nav.activeTab,
+                            onSelect = { tab -> nav.switchtab(tab) },
+                            connectedAbove = hasMini,
                         )
                     }
                 }
-            }
 
-            if (activeRoute !is Route.Login) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth(),
+                AnimatedVisibility(
+                    visible = playerExpanded && playback.current != null,
+                    enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
                 ) {
-                    if (hasMini) {
-                        val currentTrack = playback.current!!
-                        GlassMiniplayer(
-                            state = playback,
-                            liked = currentTrack.id in likedIds,
-                            onExpand = { playerExpanded = true },
-                            onTogglePlay = { hub.pilot.toggleplay() },
-                            onNext = { hub.pilot.skipnext() },
-                            onPrev = { hub.pilot.skipprev() },
-                            onLike = { hub.togglelike(currentTrack) },
-                        )
-                        Spacer(Modifier.height(2.dp))
-                    }
-                    FloatingGlassDock(
-                        activeTab = nav.activeTab,
-                        onSelect = { tab -> nav.switchtab(tab) },
+                    viewplayer(
+                        onCollapse = { playerExpanded = false },
+                        onNavigate = nav::open,
+                        onTrackMenu = { menuTrack = it },
                     )
                 }
-            }
 
-            AnimatedVisibility(
-                visible = playerExpanded && playback.current != null,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            ) {
-                viewplayer(
-                    onCollapse = { playerExpanded = false },
-                    onNavigate = nav::open,
-                    onTrackMenu = { menuTrack = it },
-                )
-            }
+                menuTrack?.let { target ->
+                    TrackMenuSheet(
+                        track = target,
+                        onDismiss = { menuTrack = null },
+                        onNavigate = { route ->
+                            playerExpanded = false
+                            nav.open(route)
+                        },
+                        onAddToPlaylist = { playlistTrack = it },
+                        onShowInfo = { infoTrack = it },
+                    )
+                }
 
-            menuTrack?.let { target ->
-                TrackMenuSheet(
-                    track = target,
-                    onDismiss = { menuTrack = null },
-                    onNavigate = { route ->
-                        playerExpanded = false
-                        nav.open(route)
-                    },
-                    onAddToPlaylist = { playlistTrack = it },
-                    onShowInfo = { infoTrack = it },
-                )
-            }
+                playlistTrack?.let { target ->
+                    PlaylistPickerSheet(
+                        track = target,
+                        onDismiss = { playlistTrack = null },
+                    )
+                }
 
-            playlistTrack?.let { target ->
-                PlaylistPickerSheet(
-                    track = target,
-                    onDismiss = { playlistTrack = null },
-                )
-            }
-
-            infoTrack?.let { target ->
-                TrackInfoSheet(
-                    track = target,
-                    onDismiss = { infoTrack = null },
-                )
+                infoTrack?.let { target ->
+                    TrackInfoSheet(
+                        track = target,
+                        onDismiss = { infoTrack = null },
+                    )
+                }
             }
         }
     }

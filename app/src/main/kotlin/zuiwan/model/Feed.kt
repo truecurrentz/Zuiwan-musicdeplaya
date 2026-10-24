@@ -43,7 +43,7 @@ sealed interface FeedItem {
         override val key: String get() = "playlist:${playlist.id}"
         override val title: String get() = playlist.title
         override val subtitle: String
-            get() = listOfNotNull(playlist.author, playlist.countText).joinToString(" · ")
+            get() = listOfNotNull(playlist.author, playlist.countText).joinToString(" - ")
         override val artwork: String get() = playlist.artwork
     }
 }
