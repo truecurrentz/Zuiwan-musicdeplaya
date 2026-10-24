@@ -1,9 +1,9 @@
 package zuiwan.data
 
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import zuiwan.model.AlbumRef
@@ -11,20 +11,20 @@ import zuiwan.model.AlbumSummary
 import zuiwan.model.ArtistRef
 import zuiwan.model.ArtistSummary
 import zuiwan.model.AudioSpec
+import zuiwan.model.LyricPayload
 import zuiwan.model.PlaylistSummary
 import zuiwan.model.Track
 
-private val codec = Json {
+private val entityJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
 }
 
-@Serializable
-@Entity(tableName = "songs")
-data class SongRow(
+@Entity(tableName = "tracks")
+data class TrackEntity(
     @PrimaryKey val id: String,
     val title: String,
-    val artistsJson: String,
+    val artistsJson: String = "[]",
     val albumId: String? = null,
     val albumName: String? = null,
     val duration: Int = 0,
@@ -32,57 +32,51 @@ data class SongRow(
     val explicit: Boolean = false,
     val video: Boolean = false,
     val liked: Boolean = false,
-    val likedAt: Long = 0L,
+    val likedAt: Long? = null,
     val downloaded: Boolean = false,
-    val downloadedAt: Long = 0L,
-    val cachedAt: Long = 0L,
+    val downloadedAt: Long? = null,
     val playCount: Int = 0,
-    val totalListenMs: Long = 0L,
-    val updatedAt: Long = System.currentTimeMillis(),
-) {
-    fun totrack(): Track {
-        val parsedArtists = runCatching {
-            codec.decodeFromString<List<ArtistRef>>(artistsJson)
-        }.getOrDefault(emptyList())
-        return Track(
-            id = id,
-            title = title,
-            artists = parsedArtists,
-            album = albumName?.takeIf { it.isNotBlank() }?.let { AlbumRef(albumId, it) },
-            duration = duration,
-            artwork = artwork,
-            explicit = explicit,
-            video = video,
-            liked = liked,
-            downloaded = downloaded,
-        )
-    }
-}
+    val totalPlayTimeMs: Long = 0L,
+    val lastPlayedAt: Long? = null,
+)
 
-fun Track.torow(existing: SongRow? = null): SongRow =
-    SongRow(
+fun TrackEntity.totrack(): Track {
+    val parsed = runCatching {
+        entityJson.decodeFromString<List<ArtistRef>>(artistsJson)
+    }.getOrDefault(emptyList())
+    return Track(
         id = id,
         title = title,
-        artistsJson = codec.encodeToString(artists),
-        albumId = album?.id ?: existing?.albumId,
-        albumName = album?.name ?: existing?.albumName,
-        duration = if (duration > 0) duration else (existing?.duration ?: 0),
-        artwork = artwork.ifBlank { existing?.artwork.orEmpty() },
-        explicit = explicit || (existing?.explicit == true),
-        video = video || (existing?.video == true),
-        liked = existing?.liked ?: liked,
-        likedAt = existing?.likedAt ?: 0L,
-        downloaded = existing?.downloaded ?: downloaded,
-        downloadedAt = existing?.downloadedAt ?: 0L,
-        cachedAt = existing?.cachedAt ?: 0L,
-        playCount = existing?.playCount ?: 0,
-        totalListenMs = existing?.totalListenMs ?: 0L,
-        updatedAt = System.currentTimeMillis(),
+        artists = parsed,
+        album = albumName?.takeIf { it.isNotBlank() }?.let { AlbumRef(albumId, it) },
+        duration = duration,
+        artwork = artwork,
+        explicit = explicit,
+        video = video,
+        liked = liked,
+        downloaded = downloaded,
+    )
+}
+
+fun Track.toentity(): TrackEntity =
+    TrackEntity(
+        id = id,
+        title = title,
+        artistsJson = entityJson.encodeToString(artists),
+        albumId = album?.id,
+        albumName = album?.name,
+        duration = duration,
+        artwork = artwork,
+        explicit = explicit,
+        video = video,
+        liked = liked,
+        likedAt = if (liked) System.currentTimeMillis() else null,
+        downloaded = downloaded,
+        downloadedAt = if (downloaded) System.currentTimeMillis() else null,
     )
 
-@Serializable
 @Entity(tableName = "albums")
-data class AlbumRow(
+data class AlbumEntity(
     @PrimaryKey val id: String,
     val playlistId: String? = null,
     val title: String,
@@ -92,40 +86,34 @@ data class AlbumRow(
     val explicit: Boolean = false,
     val saved: Boolean = true,
     val savedAt: Long = System.currentTimeMillis(),
-) {
-    fun toalbum(): AlbumSummary {
-        val parsed = runCatching {
-            codec.decodeFromString<List<ArtistRef>>(artistsJson)
-        }.getOrDefault(emptyList())
-        return AlbumSummary(
-            id = id,
-            playlistId = playlistId,
-            title = title,
-            artists = parsed,
-            year = year,
-            artwork = artwork,
-            explicit = explicit,
-            saved = saved,
-        )
-    }
-}
+)
 
-fun AlbumSummary.toalbumrow(savedFlag: Boolean = true): AlbumRow =
-    AlbumRow(
+fun AlbumEntity.tosummary(): AlbumSummary =
+    AlbumSummary(
         id = id,
         playlistId = playlistId,
         title = title,
-        artistsJson = codec.encodeToString(artists),
+        artists = runCatching { entityJson.decodeFromString<List<ArtistRef>>(artistsJson) }.getOrDefault(emptyList()),
         year = year,
         artwork = artwork,
         explicit = explicit,
-        saved = savedFlag,
-        savedAt = System.currentTimeMillis(),
+        saved = saved,
     )
 
-@Serializable
+fun AlbumSummary.toentity(savedOverride: Boolean = saved): AlbumEntity =
+    AlbumEntity(
+        id = id,
+        playlistId = playlistId,
+        title = title,
+        artistsJson = entityJson.encodeToString(artists),
+        year = year,
+        artwork = artwork,
+        explicit = explicit,
+        saved = savedOverride,
+    )
+
 @Entity(tableName = "artists")
-data class ArtistRow(
+data class ArtistEntity(
     @PrimaryKey val id: String,
     val name: String,
     val artwork: String = "",
@@ -133,100 +121,107 @@ data class ArtistRow(
     val channelId: String? = null,
     val saved: Boolean = true,
     val savedAt: Long = System.currentTimeMillis(),
-) {
-    fun toartist(): ArtistSummary =
-        ArtistSummary(
-            id = id,
-            name = name,
-            artwork = artwork,
-            subscribers = subscribers,
-            channelId = channelId,
-            saved = saved,
-        )
-}
+)
 
-fun ArtistSummary.toartistrow(savedFlag: Boolean = true): ArtistRow =
-    ArtistRow(
+fun ArtistEntity.tosummary(): ArtistSummary =
+    ArtistSummary(
         id = id,
         name = name,
         artwork = artwork,
         subscribers = subscribers,
         channelId = channelId,
-        saved = savedFlag,
-        savedAt = System.currentTimeMillis(),
+        saved = saved,
     )
 
-@Serializable
+fun ArtistSummary.toentity(savedOverride: Boolean = saved): ArtistEntity =
+    ArtistEntity(
+        id = id,
+        name = name,
+        artwork = artwork,
+        subscribers = subscribers,
+        channelId = channelId,
+        saved = savedOverride,
+    )
+
 @Entity(tableName = "playlists")
-data class PlaylistRow(
+data class PlaylistEntity(
     @PrimaryKey val id: String,
     val title: String,
     val author: String? = null,
     val artwork: String = "",
+    val local: Boolean = true,
     val remoteId: String? = null,
     val editable: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis(),
-) {
-    fun toplaylist(count: Int = 0): PlaylistSummary =
-        PlaylistSummary(
-            id = id,
-            title = title,
-            author = author ?: "Local Playlist",
-            countText = "$count songs",
-            artwork = artwork,
-            local = true,
-            remoteId = remoteId,
-            editable = editable,
-        )
-}
+)
 
-@Serializable
+fun PlaylistEntity.tosummary(count: Int): PlaylistSummary =
+    PlaylistSummary(
+        id = id,
+        title = title,
+        author = author ?: "You",
+        countText = "$count songs",
+        artwork = artwork,
+        local = local,
+        remoteId = remoteId,
+        editable = editable,
+    )
+
 @Entity(
     tableName = "playlist_tracks",
     primaryKeys = ["playlistId", "trackId"],
     indices = [Index("playlistId"), Index("trackId")],
 )
-data class PlaylistTrackRow(
+data class PlaylistTrackEntity(
     val playlistId: String,
     val trackId: String,
     val position: Int,
     val addedAt: Long = System.currentTimeMillis(),
 )
 
-@Serializable
 @Entity(
-    tableName = "history",
-    indices = [Index("trackId"), Index("playedAt")],
+    tableName = "play_events",
+    indices = [Index("trackId"), Index("timestamp")],
 )
-data class HistoryRow(
-    @PrimaryKey(autoGenerate = true) val entryId: Long = 0L,
+data class PlayEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
     val trackId: String,
-    val playedAt: Long = System.currentTimeMillis(),
-    val listenMs: Long = 0L,
+    val timestamp: Long,
+    val playTimeMs: Long,
 )
 
-@Serializable
-@Entity(tableName = "queries")
-data class QueryRow(
+@Entity(tableName = "search_history")
+data class SearchHistoryEntity(
     @PrimaryKey val query: String,
-    val searchedAt: Long = System.currentTimeMillis(),
+    val timestamp: Long = System.currentTimeMillis(),
 )
 
-@Serializable
 @Entity(tableName = "lyrics")
-data class LyricRow(
+data class LyricsEntity(
     @PrimaryKey val trackId: String,
-    val raw: String,
-    val synced: Boolean,
     val source: String,
-    val offsetMs: Long = 0L,
+    val synced: Boolean,
+    val raw: String,
     val updatedAt: Long = System.currentTimeMillis(),
 )
 
-@Serializable
+fun LyricsEntity.topayload(): LyricPayload =
+    LyricPayload(
+        source = source,
+        synced = synced,
+        raw = raw,
+    )
+
+fun LyricPayload.toentity(trackId: String): LyricsEntity =
+    LyricsEntity(
+        trackId = trackId,
+        source = source,
+        synced = synced,
+        raw = raw,
+    )
+
 @Entity(tableName = "formats")
-data class FormatRow(
+data class FormatEntity(
     @PrimaryKey val id: String,
     val itag: Int,
     val mime: String,
@@ -237,24 +232,10 @@ data class FormatRow(
     val loudnessDb: Double? = null,
     val perceptualDb: Double? = null,
     val client: String = "",
-) {
-    fun tospec(): AudioSpec =
-        AudioSpec(
-            id = id,
-            itag = itag,
-            mime = mime,
-            codecs = codecs,
-            bitrate = bitrate,
-            sampleRate = sampleRate,
-            lengthBytes = lengthBytes,
-            loudnessDb = loudnessDb,
-            perceptualDb = perceptualDb,
-            client = client,
-        )
-}
+)
 
-fun AudioSpec.toformatrow(): FormatRow =
-    FormatRow(
+fun FormatEntity.tospec(): AudioSpec =
+    AudioSpec(
         id = id,
         itag = itag,
         mime = mime,
@@ -266,3 +247,31 @@ fun AudioSpec.toformatrow(): FormatRow =
         perceptualDb = perceptualDb,
         client = client,
     )
+
+fun AudioSpec.toentity(): FormatEntity =
+    FormatEntity(
+        id = id,
+        itag = itag,
+        mime = mime,
+        codecs = codecs,
+        bitrate = bitrate,
+        sampleRate = sampleRate,
+        lengthBytes = lengthBytes,
+        loudnessDb = loudnessDb,
+        perceptualDb = perceptualDb,
+        client = client,
+    )
+
+@Entity(tableName = "saved_queue")
+data class QueueEntity(
+    @PrimaryKey val slot: Int,
+    val trackId: String,
+    val queueTitle: String,
+    val activeIndex: Int,
+)
+
+data class TopTrackRow(
+    @Embedded val track: TrackEntity,
+    val plays: Int,
+    val playTime: Long,
+)

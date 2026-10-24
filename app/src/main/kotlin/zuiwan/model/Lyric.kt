@@ -12,6 +12,7 @@ data class LyricWord(
 @Serializable
 data class LyricLine(
     val timeMs: Long,
+    val endMs: Long = 0L,
     val text: String,
     val romanized: String? = null,
     val translated: String? = null,
@@ -19,20 +20,10 @@ data class LyricLine(
 )
 
 @Serializable
-enum class LyricSource(val label: String) {
-    BETTER("BetterLyrics"),
-    LRCLIB("LRCLIB"),
-    KUGOU("KuGou"),
-    YOUTUBE("YouTube"),
-    LOCAL("Saved"),
-}
-
-@Serializable
-data class LyricSheet(
-    val trackId: String,
-    val synced: Boolean,
-    val lines: List<LyricLine>,
-    val raw: String,
-    val source: LyricSource,
-    val offsetMs: Long = 0L,
+data class LyricPayload(
+    val source: String = "",
+    val synced: Boolean = false,
+    val wordSynced: Boolean = false,
+    val lines: List<LyricLine> = emptyList(),
+    val raw: String = "",
 )

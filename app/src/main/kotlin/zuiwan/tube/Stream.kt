@@ -148,7 +148,6 @@ class StreamEngine(
             val latest = cachedExtractor
             if (latest != null && cachedGen == gen) return@withLock latest
 
-            runCatching { cachedCipher?.close() }
             val store = RemotePlayerConfigStore(tube.httpClient, configRepo)
             val cipher = YouTubeCipherService(tube.httpClient, store)
             val parser = YtConfigParserImpl(

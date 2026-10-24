@@ -29,12 +29,10 @@ data class Track(
     val setVideoId: String? = null,
     val libraryAddToken: String? = null,
     val libraryRemoveToken: String? = null,
-) {
-    fun artistline(): String =
-        artists.joinToString(", ") { it.name }.ifBlank { "Unknown Artist" }
+)
 
-    fun cleanartwork(size: Int = 544): String = upscaleart(artwork, size)
-}
+fun Track.artistline(): String =
+    artists.joinToString(", ") { it.name }.ifBlank { "Unknown Artist" }
 
 @Serializable
 data class AudioSpec(
@@ -52,7 +50,7 @@ data class AudioSpec(
 
 enum class QualityMode(val label: String) {
     AUTO("Auto"),
-    HIGH("High (256 kbps)"),
+    HIGH("High"),
     LOW("Data Saver"),
 }
 
@@ -76,14 +74,14 @@ fun upscaleart(url: String, size: Int = 544): String {
     }
 }
 
-fun formatclock(seconds: Long): String {
-    val safe = seconds.coerceAtLeast(0L)
-    val hrs = safe / 3600
-    val mins = (safe % 3600) / 60
-    val secs = safe % 60
-    return if (hrs > 0) {
+fun formatclock(ms: Long): String {
+    val safeSec = (ms / 1_000L).coerceAtLeast(0L)
+    val hrs = safeSec / 3_600L
+    val mins = (safeSec % 3_600L) / 60L
+    val secs = safeSec % 60L
+    return if (hrs > 0L) {
         "%d:%02d:%02d".format(hrs, mins, secs)
     } else {
-        "%d:%02d".format(mins, secs)
+        "%02d:%02d".format(mins, secs)
     }
 }
