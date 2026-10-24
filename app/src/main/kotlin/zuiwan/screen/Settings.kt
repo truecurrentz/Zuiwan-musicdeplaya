@@ -519,7 +519,7 @@ fun viewsettings(
                                     onClick = { page = SettingsPage.APPEARANCE },
                                 )
                                 SettingsNavItem(
-                                    icon = ZIcons.Wave,
+                                    icon = ZIcons.Waveform,
                                     title = "Player & Audio",
                                     subtitle = "${qualitylabel(settings.quality)} quality - ${if (eqProfile.enabled) eqProfile.name else "Parametric EQ"}",
                                     position = GroupPos.MIDDLE,
@@ -639,7 +639,7 @@ fun viewsettings(
                             SettingsGroupTitle("Streaming & DSP")
                             SettingsGroupColumn {
                                 SettingsNavItem(
-                                    icon = ZIcons.Wave,
+                                    icon = ZIcons.Waveform,
                                     title = "Streaming Quality",
                                     subtitle = qualitylabel(settings.quality),
                                     position = GroupPos.TOP,
