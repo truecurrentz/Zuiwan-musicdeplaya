@@ -1,13 +1,17 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+val releaseKeystoreFile = file("keystore/release.jks")
+
 plugins {
     id("com.android.application")
-    alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.ksp)
+    alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
 }
 
 android {
     namespace = "app.zuiwan"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "app.zuiwan"
@@ -15,15 +19,13 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
+        vectorDrawables.useSupportLibrary = true
     }
 
-    val keystoreFile = file("keystore/release.jks")
-    val hasKeystore = keystoreFile.exists()
-
     signingConfigs {
-        if (hasKeystore) {
+        if (releaseKeystoreFile.exists()) {
             create("release") {
-                storeFile = keystoreFile
+                storeFile = releaseKeystoreFile
                 storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "zuiwan123"
                 keyAlias = System.getenv("KEY_ALIAS") ?: "zuiwan"
                 keyPassword = System.getenv("KEY_PASSWORD") ?: "zuiwan123"
@@ -35,11 +37,14 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = if (hasKeystore) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            isCrunchPngs = false
+            isDebuggable = false
+            signingConfig =
+                if (releaseKeystoreFile.exists()) {
+                    signingConfigs.getByName("release")
+                } else {
+                    signingConfigs.getByName("debug")
+                }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard.pro",
@@ -47,11 +52,8 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
+            isDebuggable = true
         }
-    }
-
-    buildFeatures {
-        compose = true
     }
 
     compileOptions {
@@ -60,17 +62,52 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
+    kotlin {
+        jvmToolchain(21)
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_21)
+            freeCompilerArgs.add("-opt-in=kotlin.RequiresOptIn")
+        }
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+
+    lint {
+        warningsAsErrors = false
+        abortOnError = false
+        checkDependencies = false
+        checkReleaseBuilds = false
+    }
+
     packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
-            excludes += "META-INF/DEPENDENCIES"
+            excludes += "META-INF/NOTICE.md"
+            excludes += "META-INF/CONTRIBUTORS.md"
+            excludes += "META-INF/LICENSE.md"
             excludes += "META-INF/INDEX.LIST"
+            excludes += "META-INF/io.netty.versions.properties"
         }
     }
 }
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+configurations.configureEach {
+    exclude(group = "org.json", module = "json")
 }
 
 dependencies {
@@ -85,30 +122,24 @@ dependencies {
     implementation(libs.material3)
     implementation(libs.viewmodel.compose)
     implementation(libs.lifecycle.process)
-
     implementation(libs.coil)
     implementation(libs.coil.okhttp)
     implementation(libs.palette)
     implementation(libs.haze)
     implementation(libs.haze.blur)
-
     implementation(libs.media3)
-    implementation(libs.media3.okhttp)
     implementation(libs.media3.session)
-
+    implementation(libs.media3.okhttp)
     implementation(libs.room.runtime)
     ksp(libs.room.compiler)
-
     implementation(libs.ktor.core)
     implementation(libs.ktor.okhttp)
     implementation(libs.ktor.negotiation)
     implementation(libs.ktor.encoding)
     implementation(libs.ktor.json)
-
-    implementation(libs.innertubex)
-    implementation(libs.tinypinyin)
     implementation(libs.guava)
     implementation(libs.coroutines.guava)
-
+    implementation(libs.innertubex)
+    implementation(libs.tinypinyin)
     coreLibraryDesugaring(libs.desugaring)
 }
