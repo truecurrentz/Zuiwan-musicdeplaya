@@ -166,7 +166,7 @@ fun viewplaylist(
 
         detail?.let { info ->
             val heroArt = upscaleart(
-                info.playlist.artwork.ifBlank { info.tracks.firstOrNull()?.artwork },
+                info.playlist.artwork.ifBlank { info.tracks.firstOrNull()?.artwork.orEmpty() },
                 1080,
             )
             val metaText = listOfNotNull(
