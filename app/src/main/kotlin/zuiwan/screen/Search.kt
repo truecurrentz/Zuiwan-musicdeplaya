@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -42,18 +43,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import zuiwan.model.FeedItem
+import zuiwan.model.SearchPage
 import zuiwan.model.SearchTab
-import zuiwan.model.SuggestBundle
 import zuiwan.model.Track
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
@@ -72,6 +73,11 @@ import zuiwan.ui.SongRow
 import zuiwan.ui.ZIcons
 import zuiwan.ui.rememberheaderscroll
 
+private enum class DiscoverPane(val label: String, val icon: ImageVector) {
+    EXPLORE("Explore", ZIcons.Explore),
+    SUGGESTIONS("Suggestions", ZIcons.Sparkles),
+}
+
 @Composable
 fun viewsearch(
     onNavigate: (Route) -> Unit,
@@ -80,20 +86,36 @@ fun viewsearch(
 ) {
     val hub = LocalHub.current
     val glass = LocalGlass.current
+    val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
 
-    val recentQueries by hub.recentQueries.collectAsState()
-    val playback by hub.pilot.state.collectAsState()
+    val recentSearches by hub.searchHistory.collectAsState()
     val explore by hub.exploreFeed.collectAsState()
     val exploreLoading by hub.exploreLoading.collectAsState()
+    val homeFeed by hub.homeFeed.collectAsState()
+    val history by hub.historyTracks.collectAsState()
+    val playback by hub.pilot.state.collectAsState()
 
     var query by rememberSaveable { mutableStateOf("") }
     var submitted by rememberSaveable { mutableStateOf("") }
-    var activeTab by rememberSaveable { mutableStateOf(SearchTab.ALL) }
-    var suggestions by remember { mutableStateOf(SuggestBundle(emptyList(), emptyList())) }
-    var results by remember { mutableStateOf<List<FeedItem>>(emptyList()) }
-    var continuation by remember { mutableStateOf<String?>(null) }
-    var searching by remember { mutableStateOf(false) }
+    var tab by rememberSaveable { mutableStateOf(SearchTab.ALL) }
+    var pane by rememberSaveable { mutableStateOf(DiscoverPane.SUGGESTIONS) }
+    var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
+    var suggestedItems by remember { mutableStateOf<List<FeedItem>>(emptyList()) }
+    var page by remember { mutableStateOf(SearchPage()) }
+    var loading by remember { mutableStateOf(false) }
+
+    val uniqueSongs = remember(history, homeFeed, explore) {
+        val fromHome = homeFeed.shelves
+            .flatMap { it.items }
+            .mapNotNull { (it as? FeedItem.SongCard)?.track }
+        val fromCharts = explore.charts
+            .flatMap { it.items }
+            .mapNotNull { (it as? FeedItem.SongCard)?.track }
+        (history + fromHome + fromCharts)
+            .distinctBy { it.id }
+            .take(12)
+    }
 
     val headerScroll = rememberheaderscroll()
     val listState = rememberLazyListState()
@@ -101,38 +123,6 @@ fun viewsearch(
     val lifted by remember {
         derivedStateOf {
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 12
-        }
-    }
-
-    LaunchedEffect(query, submitted) {
-        val clean = query.trim()
-        if (clean.isEmpty() || clean == submitted) {
-            suggestions = SuggestBundle(emptyList(), emptyList())
-            return@LaunchedEffect
-        }
-        delay(220)
-        hub.tube.suggest(clean).onSuccess { suggestions = it }
-    }
-
-    fun executeSearch(term: String, tab: SearchTab = activeTab) {
-        val clean = term.trim()
-        if (clean.isEmpty()) return
-        query = clean
-        submitted = clean
-        activeTab = tab
-        hub.savesearch(clean)
-        scope.launch {
-            searching = true
-            hub.tube.search(clean, tab)
-                .onSuccess { page ->
-                    results = page.items
-                    continuation = page.continuation
-                }
-                .onFailure {
-                    results = emptyList()
-                    continuation = null
-                }
-            searching = false
         }
     }
 
@@ -144,15 +134,47 @@ fun viewsearch(
         }
     }
 
-    LaunchedEffect(nearEnd, continuation) {
-        val token = continuation
-        if (nearEnd && !token.isNullOrBlank() && !searching) {
-            searching = true
-            hub.tube.searchmore(token, activeTab).onSuccess { more ->
-                results = results + more.items
-                continuation = more.continuation
+    fun runsearch(q: String, targetTab: SearchTab = tab) {
+        val clean = q.trim()
+        if (clean.isEmpty()) return
+        submitted = clean
+        tab = targetTab
+        hub.savesearch(clean)
+        focusManager.clearFocus()
+        scope.launch {
+            loading = true
+            page = hub.tube.searchmusic(clean, targetTab).getOrDefault(SearchPage())
+            loading = false
+        }
+    }
+
+    LaunchedEffect(query) {
+        val clean = query.trim()
+        if (clean.isEmpty() || clean == submitted) {
+            if (clean.isEmpty()) {
+                suggestions = emptyList()
+                suggestedItems = emptyList()
             }
-            searching = false
+            return@LaunchedEffect
+        }
+        delay(220L)
+        hub.tube.suggestquery(clean).onSuccess { bundle ->
+            suggestions = bundle.queries
+            suggestedItems = bundle.items
+        }
+    }
+
+    LaunchedEffect(nearEnd, page.continuation) {
+        val cont = page.continuation
+        if (nearEnd && !cont.isNullOrBlank() && !loading && submitted.isNotBlank()) {
+            loading = true
+            hub.tube.searchmusic(submitted, tab, continuation = cont).onSuccess { more ->
+                page = page.copy(
+                    items = (page.items + more.items).distinctBy { it.key },
+                    continuation = more.continuation,
+                )
+            }
+            loading = false
         }
     }
 
@@ -161,88 +183,129 @@ fun viewsearch(
         lifted = lifted,
         header = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                BrandBar(
-                    actions = {
-                        GlassIconButton(
-                            icon = ZIcons.Settings,
-                            onClick = { onNavigate(Route.Settings) },
-                        )
-                    },
-                )
+                BrandBar {
+                    GlassIconButton(
+                        icon = ZIcons.Settings,
+                        onClick = { onNavigate(Route.Settings) },
+                    )
+                }
 
-                GlassBox(
-                    shape = RoundedCornerShape(999.dp),
-                    elevated = true,
-                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 13.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 20.dp, end = 20.dp, bottom = 10.dp),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
+                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    GlassBox(
+                        shape = RoundedCornerShape(999.dp),
+                        elevated = true,
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 13.dp),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Icon(
-                            imageVector = ZIcons.Search,
-                            contentDescription = null,
-                            tint = glass.inkSecondary,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Box(modifier = Modifier.weight(1f)) {
-                            if (query.isEmpty()) {
-                                Text(
-                                    text = "Artists, songs, albums, playlists",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = glass.inkSecondary,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(
+                                imageVector = ZIcons.Search,
+                                contentDescription = null,
+                                tint = glass.inkSecondary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Box(modifier = Modifier.weight(1f)) {
+                                if (query.isEmpty()) {
+                                    Text(
+                                        text = "Search YouTube Music",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = glass.inkSecondary,
+                                    )
+                                }
+                                BasicTextField(
+                                    value = query,
+                                    onValueChange = {
+                                        query = it
+                                        if (it.isBlank()) submitted = ""
+                                    },
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = glass.ink),
+                                    cursorBrush = SolidColor(glass.accent),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                    keyboardActions = KeyboardActions(onSearch = { runsearch(query) }),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                             }
-                            BasicTextField(
-                                value = query,
-                                onValueChange = {
-                                    query = it
-                                    if (it.isEmpty()) {
+                            if (query.isNotEmpty()) {
+                                GlassIconButton(
+                                    icon = ZIcons.Close,
+                                    onClick = {
+                                        query = ""
                                         submitted = ""
-                                        results = emptyList()
-                                    }
-                                },
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.bodyLarge.copy(color = glass.ink),
-                                cursorBrush = SolidColor(glass.accent),
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                keyboardActions = KeyboardActions(onSearch = { executeSearch(query) }),
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                        if (query.isNotEmpty()) {
-                            GlassIconButton(
-                                icon = ZIcons.Close,
-                                onClick = {
-                                    query = ""
-                                    submitted = ""
-                                    results = emptyList()
-                                },
-                                size = 30.dp,
-                                iconSize = 16.dp,
-                            )
+                                        page = SearchPage()
+                                    },
+                                    size = 28.dp,
+                                    iconSize = 15.dp,
+                                )
+                            } else {
+                                GlassIconButton(
+                                    icon = ZIcons.Globe,
+                                    onClick = { pane = DiscoverPane.EXPLORE },
+                                    size = 30.dp,
+                                    iconSize = 18.dp,
+                                )
+                            }
                         }
                     }
                 }
 
-                if (submitted.isNotEmpty()) {
+                if (submitted.isNotBlank()) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .horizontalScroll(rememberScrollState())
-                            .padding(start = 20.dp, end = 20.dp, bottom = 10.dp),
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                     ) {
-                        SearchTab.entries.forEach { tab ->
+                        SearchTab.entries.forEach { t ->
                             GlassChip(
-                                label = tab.label,
-                                selected = activeTab == tab,
-                                onClick = { executeSearch(submitted, tab) },
+                                label = t.label,
+                                selected = tab == t,
+                                onClick = { runsearch(submitted, t) },
                             )
+                        }
+                    }
+                } else if (query.isBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
+                    ) {
+                        DiscoverPane.entries.forEach { item ->
+                            val active = pane == item
+                            val tint = if (active) glass.accent else glass.inkSecondary
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { pane = item }
+                                    .padding(top = 8.dp),
+                            ) {
+                                Icon(
+                                    imageVector = item.icon,
+                                    contentDescription = item.label,
+                                    tint = tint,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = item.label,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = tint,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .width(68.dp)
+                                        .height(3.dp)
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .background(if (active) glass.accent else Color.Transparent),
+                                )
+                            }
                         }
                     }
                 }
@@ -253,39 +316,94 @@ fun viewsearch(
             state = listState,
             contentPadding = PaddingValues(
                 top = topPad + 6.dp,
-                bottom = bottomPadding.calculateBottomPadding() + 28.dp,
+                bottom = bottomPadding.calculateBottomPadding() + 24.dp,
             ),
             modifier = Modifier.fillMaxSize(),
         ) {
-            when {
-                query.isNotBlank() && query.trim() != submitted -> {
-                    items(suggestions.queries) { suggestion ->
+            if (submitted.isBlank()) {
+                if (query.isNotBlank() && (suggestions.isNotEmpty() || suggestedItems.isNotEmpty())) {
+                    items(suggestions) { sug ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { executeSearch(suggestion) }
+                                .clickable {
+                                    query = sug
+                                    runsearch(sug)
+                                }
                                 .padding(horizontal = 22.dp, vertical = 12.dp),
                         ) {
-                            Icon(ZIcons.Search, contentDescription = null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
+                            Icon(ZIcons.Search, null, tint = glass.inkSecondary, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(14.dp))
-                            Text(suggestion, style = MaterialTheme.typography.bodyLarge, color = glass.ink)
+                            Text(sug, style = MaterialTheme.typography.titleMedium, color = glass.ink)
                         }
                     }
-                    items(suggestions.directHits, key = { it.key }) { item ->
-                        SearchItemRow(
-                            item = item,
-                            playingId = playback.current?.id,
-                            onNavigate = onNavigate,
-                            onPlay = { song -> hub.pilot.audioplay(song, "Search") },
-                            onMore = onTrackMenu,
-                        )
+                    items(suggestedItems, key = { it.key }) { item ->
+                        RenderFeedRow(item, playback.current?.id, onNavigate, onTrackMenu) { song ->
+                            hub.pilot.audioplay(song, "Search")
+                        }
                     }
-                }
+                } else if (pane == DiscoverPane.SUGGESTIONS) {
+                    if (recentSearches.isNotEmpty()) {
+                        item(key = "recent_head") {
+                            Spacer(Modifier.height(6.dp))
+                            SectionHeader(
+                                title = "Recent searches",
+                                actionLabel = "Clear",
+                                onAction = { hub.clearsearches() },
+                            )
+                        }
+                        item(key = "recent_chips") {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 18.dp, vertical = 4.dp),
+                            ) {
+                                recentSearches.take(10).forEach { term ->
+                                    GlassChip(
+                                        label = term,
+                                        selected = false,
+                                        leadingIcon = ZIcons.History,
+                                        onClick = {
+                                            query = term
+                                            runsearch(term)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
 
-                submitted.isNotEmpty() -> {
-                    if (searching && results.isEmpty()) {
-                        item(key = "loader") {
+                    if (uniqueSongs.isNotEmpty()) {
+                        item(key = "unique_head") {
+                            Spacer(Modifier.height(10.dp))
+                            SectionHeader(
+                                title = "Unique Songs",
+                                actionLabel = "Play all",
+                                onAction = {
+                                    hub.pilot.playtracks(uniqueSongs, 0, "Unique Songs", fetchRadio = true)
+                                },
+                            )
+                        }
+                        itemsIndexed(uniqueSongs, key = { _, s -> s.id }) { idx, song ->
+                            SongRow(
+                                track = song,
+                                indexNumber = idx + 1,
+                                playing = playback.current?.id == song.id,
+                                cardBackground = true,
+                                onClick = {
+                                    hub.pilot.playtracks(uniqueSongs, idx, "Unique Songs", fetchRadio = true)
+                                },
+                                onMore = { onTrackMenu(song) },
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+                } else {
+                    if (exploreLoading && explore.releases.isEmpty() && explore.moods.isEmpty()) {
+                        item(key = "exp_loader") {
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
@@ -296,107 +414,16 @@ fun viewsearch(
                             }
                         }
                     }
-                    items(results, key = { "${activeTab.name}_${it.key}" }) { item ->
-                        SearchItemRow(
-                            item = item,
-                            playingId = playback.current?.id,
-                            onNavigate = onNavigate,
-                            onPlay = { song ->
-                                val pool = results.mapNotNull { (it as? FeedItem.SongCard)?.track }
-                                val start = pool.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-                                hub.pilot.playtracks(pool.ifEmpty { listOf(song) }, start, "Search: $submitted")
-                            },
-                            onMore = onTrackMenu,
-                        )
-                    }
-                }
-
-                else -> {
-                    if (recentQueries.isNotEmpty()) {
-                        item(key = "recent_head") {
-                            SectionHeader(
-                                title = "Recent searches",
-                                actionLabel = "Clear",
-                                onAction = { hub.clearsearches() },
-                            )
-                        }
-                        item(key = "recent_chips") {
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                items(recentQueries, key = { it }) { past ->
-                                    GlassChip(
-                                        label = past,
-                                        selected = false,
-                                        icon = ZIcons.History,
-                                        onClick = { executeSearch(past) },
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    if (explore.moods.isNotEmpty()) {
-                        item(key = "moods_head") {
-                            Spacer(Modifier.height(8.dp))
-                            SectionHeader(title = "Browse categories")
-                        }
-                        val pairs = explore.moods.chunked(2)
-                        items(pairs) { rowItems ->
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 20.dp, vertical = 6.dp),
-                            ) {
-                                rowItems.forEach { tile ->
-                                    val accentTint = Color(tile.stripeColor or 0xFF000000L)
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(72.dp)
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .background(
-                                                Brush.linearGradient(
-                                                    colors = listOf(
-                                                        accentTint.copy(alpha = if (glass.isDark) 0.34f else 0.22f),
-                                                        glass.glassElevated,
-                                                    ),
-                                                ),
-                                            )
-                                            .clickable {
-                                                onNavigate(Route.Browse(tile.browseId, tile.params, tile.title))
-                                            }
-                                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                                    ) {
-                                        Text(
-                                            text = tile.title,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = glass.ink,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.align(Alignment.BottomStart),
-                                        )
-                                    }
-                                }
-                                if (rowItems.size == 1) {
-                                    Spacer(Modifier.weight(1f))
-                                }
-                            }
-                        }
-                    }
 
                     if (explore.releases.isNotEmpty()) {
-                        item(key = "releases_head") {
+                        item(key = "exp_releases_head") {
                             Spacer(Modifier.height(10.dp))
-                            SectionHeader(title = "New releases")
+                            SectionHeader(title = "New Releases")
                         }
-                        item(key = "releases_row") {
+                        item(key = "exp_releases_row") {
                             LazyRow(
-                                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 items(explore.releases, key = { it.id }) { album ->
                                     AlbumGridCard(album = album) {
@@ -408,20 +435,20 @@ fun viewsearch(
                     }
 
                     explore.charts.forEachIndexed { cIdx, chart ->
-                        item(key = "chart_head_$cIdx") {
+                        item(key = "exp_chart_head_$cIdx") {
                             Spacer(Modifier.height(10.dp))
                             SectionHeader(title = chart.title)
                         }
-                        item(key = "chart_row_$cIdx") {
+                        item(key = "exp_chart_row_$cIdx") {
                             val songs = chart.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
                             if (songs.isNotEmpty()) {
-                                val cols = songs.take(15).chunked(3)
+                                val cols = songs.take(16).chunked(4)
                                 LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
                                     items(cols) { group ->
-                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                             group.forEach { song ->
                                                 QuickPickTile(
                                                     track = song,
@@ -438,8 +465,8 @@ fun viewsearch(
                                 }
                             } else {
                                 LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
                                     items(chart.items, key = { it.key }) { entry ->
                                         MediaCard(
@@ -459,16 +486,119 @@ fun viewsearch(
                         }
                     }
 
-                    if (exploreLoading && explore.moods.isEmpty() && explore.releases.isEmpty()) {
-                        item(key = "exp_loading") {
-                            Box(
-                                contentAlignment = Alignment.Center,
+                    if (explore.moods.isNotEmpty()) {
+                        item(key = "exp_moods_head") {
+                            Spacer(Modifier.height(12.dp))
+                            SectionHeader(title = "Moods & Genres")
+                        }
+                        val pairs = explore.moods.chunked(2)
+                        items(pairs) { rowItems ->
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 56.dp),
+                                    .padding(horizontal = 18.dp, vertical = 5.dp),
                             ) {
-                                CircularProgressIndicator(color = glass.accent)
+                                rowItems.forEach { tile ->
+                                    val stripe = Color(tile.stripeColor or 0xFF000000L)
+                                    GlassBox(
+                                        shape = RoundedCornerShape(16.dp),
+                                        elevated = true,
+                                        onClick = {
+                                            onNavigate(Route.Browse(tile.browseId, tile.params, tile.title))
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(54.dp),
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxSize(),
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(5.dp)
+                                                    .height(54.dp)
+                                                    .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
+                                                    .background(stripe),
+                                            )
+                                            Text(
+                                                text = tile.title,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = glass.ink,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(horizontal = 14.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                                if (rowItems.size == 1) {
+                                    Spacer(Modifier.weight(1f))
+                                }
                             }
+                        }
+                    }
+                }
+            } else {
+                if (tab == SearchTab.ALL) {
+                    page.shelves.forEachIndexed { idx, shelf ->
+                        item(key = "s_head_$idx") {
+                            Spacer(Modifier.height(8.dp))
+                            SectionHeader(title = shelf.title)
+                        }
+                        val allSongs = shelf.items.all { it is FeedItem.SongCard }
+                        if (allSongs) {
+                            val songs = shelf.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
+                            items(songs, key = { "${idx}_${it.id}" }) { song ->
+                                SongRow(
+                                    track = song,
+                                    playing = playback.current?.id == song.id,
+                                    onClick = { hub.pilot.audioplay(song, submitted) },
+                                    onMore = { onTrackMenu(song) },
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                            }
+                        } else {
+                            item(key = "s_cards_$idx") {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    items(shelf.items, key = { it.key }) { item ->
+                                        MediaCard(
+                                            item = item,
+                                            onClick = {
+                                                when (item) {
+                                                    is FeedItem.SongCard -> hub.pilot.audioplay(item.track, submitted)
+                                                    is FeedItem.AlbumCard -> onNavigate(Route.Album(item.album.id))
+                                                    is FeedItem.ArtistCard -> onNavigate(Route.Artist(item.artist.id))
+                                                    is FeedItem.PlaylistCard -> onNavigate(Route.Playlist(item.playlist.id))
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    items(page.items, key = { it.key }) { item ->
+                        RenderFeedRow(item, playback.current?.id, onNavigate, onTrackMenu) { song ->
+                            hub.pilot.audioplay(song, submitted)
+                        }
+                    }
+                }
+
+                if (loading) {
+                    item(key = "search_loader") {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                        ) {
+                            CircularProgressIndicator(color = glass.accent)
                         }
                     }
                 }
@@ -478,92 +608,82 @@ fun viewsearch(
 }
 
 @Composable
-private fun SearchItemRow(
+private fun RenderFeedRow(
     item: FeedItem,
     playingId: String?,
     onNavigate: (Route) -> Unit,
-    onPlay: (Track) -> Unit,
-    onMore: (Track) -> Unit,
+    onTrackMenu: (Track) -> Unit,
+    onPlaySong: (Track) -> Unit,
 ) {
     val glass = LocalGlass.current
     when (item) {
-        is FeedItem.SongCard -> {
-            SongRow(
-                track = item.track,
-                playing = playingId == item.track.id,
-                onClick = { onPlay(item.track) },
-                onMore = { onMore(item.track) },
-                modifier = Modifier.padding(horizontal = 10.dp),
-            )
-        }
-        is FeedItem.AlbumCard -> {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigate(Route.Album(item.album.id)) }
-                    .padding(horizontal = 20.dp, vertical = 9.dp),
-            ) {
-                ArtImage(
-                    url = item.album.artwork,
-                    shape = RoundedCornerShape(10.dp),
-                    fallbackIcon = ZIcons.Album,
-                    modifier = Modifier.size(54.dp),
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(item.album.title, style = MaterialTheme.typography.titleMedium, color = glass.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val sub = listOfNotNull(
-                        "Album",
+        is FeedItem.SongCard -> SongRow(
+            track = item.track,
+            playing = playingId == item.track.id,
+            onClick = { onPlaySong(item.track) },
+            onMore = { onTrackMenu(item.track) },
+            modifier = Modifier.padding(horizontal = 8.dp),
+        )
+
+        is FeedItem.AlbumCard -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onNavigate(Route.Album(item.album.id)) }
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+        ) {
+            ArtImage(item.album.artwork, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(52.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(item.album.title, style = MaterialTheme.typography.titleMedium, color = glass.ink, maxLines = 1)
+                Text(
+                    listOfNotNull(
                         item.album.artists.joinToString(", ") { it.name }.takeIf { it.isNotBlank() },
                         item.album.year?.toString(),
-                    ).joinToString(" - ")
-                    Text(sub, style = MaterialTheme.typography.bodyMedium, color = glass.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
-        is FeedItem.ArtistCard -> {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigate(Route.Artist(item.artist.id)) }
-                    .padding(horizontal = 20.dp, vertical = 9.dp),
-            ) {
-                ArtImage(
-                    url = item.artist.artwork,
-                    shape = CircleShape,
-                    fallbackIcon = ZIcons.Artist,
-                    modifier = Modifier.size(54.dp),
+                    ).joinToString(" - ").ifBlank { "Album" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = glass.inkSecondary,
+                    maxLines = 1,
                 )
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(item.artist.name, style = MaterialTheme.typography.titleMedium, color = glass.ink, maxLines = 1)
-                    Text(item.artist.subscribers ?: "Artist", style = MaterialTheme.typography.bodyMedium, color = glass.inkSecondary, maxLines = 1)
-                }
             }
+            Icon(ZIcons.ChevronRight, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
         }
-        is FeedItem.PlaylistCard -> {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigate(Route.Playlist(item.playlist.id)) }
-                    .padding(horizontal = 20.dp, vertical = 9.dp),
-            ) {
-                ArtImage(
-                    url = item.playlist.artwork,
-                    shape = RoundedCornerShape(10.dp),
-                    fallbackIcon = ZIcons.Playlist,
-                    modifier = Modifier.size(54.dp),
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(item.playlist.title, style = MaterialTheme.typography.titleMedium, color = glass.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val sub = listOfNotNull("Playlist", item.playlist.author, item.playlist.countText).joinToString(" - ")
-                    Text(sub, style = MaterialTheme.typography.bodyMedium, color = glass.inkSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+
+        is FeedItem.ArtistCard -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onNavigate(Route.Artist(item.artist.id)) }
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+        ) {
+            ArtImage(item.artist.artwork, shape = CircleShape, fallbackIcon = ZIcons.Artist, modifier = Modifier.size(52.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(item.artist.name, style = MaterialTheme.typography.titleMedium, color = glass.ink, maxLines = 1)
+                Text(item.artist.subscribers ?: "Artist", style = MaterialTheme.typography.bodyMedium, color = glass.inkSecondary, maxLines = 1)
             }
+            Icon(ZIcons.ChevronRight, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
+        }
+
+        is FeedItem.PlaylistCard -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onNavigate(Route.Playlist(item.playlist.id)) }
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+        ) {
+            ArtImage(item.playlist.artwork, shape = RoundedCornerShape(12.dp), fallbackIcon = ZIcons.Playlist, modifier = Modifier.size(52.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(item.playlist.title, style = MaterialTheme.typography.titleMedium, color = glass.ink, maxLines = 1)
+                Text(
+                    listOfNotNull(item.playlist.author, item.playlist.countText).joinToString(" - ").ifBlank { "Playlist" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = glass.inkSecondary,
+                    maxLines = 1,
+                )
+            }
+            Icon(ZIcons.ChevronRight, null, tint = glass.inkMuted, modifier = Modifier.size(18.dp))
         }
     }
 }
