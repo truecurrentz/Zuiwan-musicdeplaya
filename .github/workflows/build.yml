@@ -67,7 +67,7 @@ jobs:
           STATUS=${PIPESTATUS[0]}
           set -e
           if [ "$STATUS" -ne 0 ]; then
-            python3 -c 'import pathlib; lines = pathlib.Path("build.log").read_text(errors="replace").splitlines(); errs = [l for l in lines if l.startswith(("e: ", "FAILURE:", "* What went wrong:", "> "))]; msg = "\n".join(errs[-60:] if errs else lines[-60:])[-3800:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"); print(f"::error title=GradleBuild::{msg}")'
+            python3 -c 'import pathlib; lines = pathlib.Path("build.log").read_text(errors="replace").splitlines(); kt = [l for l in lines if l.startswith("e:")]; msg = "\n".join((kt + ["---"] + lines[-65:])[-90:])[-3800:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"); print(f"::error title=GradleBuild::{msg}")'
             exit "$STATUS"
           fi
           mkdir -p dist

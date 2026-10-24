@@ -31,7 +31,6 @@ compose-ui-util = { module = "androidx.compose.ui:ui-util", version.ref = "compo
 compose-animation = { module = "androidx.compose.animation:animation", version.ref = "compose" }
 material3 = { module = "androidx.compose.material3:material3", version.ref = "material3" }
 viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "lifecycle" }
 coil = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }

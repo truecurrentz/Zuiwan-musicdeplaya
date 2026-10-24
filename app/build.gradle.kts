@@ -125,7 +125,6 @@ dependencies {
     implementation(libs.compose.animation)
     implementation(libs.material3)
     implementation(libs.viewmodel.compose)
-    implementation(libs.lifecycle.runtime)
     implementation(libs.lifecycle.process)
     implementation(libs.coil)
     implementation(libs.coil.okhttp)
