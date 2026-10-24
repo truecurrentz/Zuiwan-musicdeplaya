@@ -1,0 +1,91 @@
+name: Build Zuiwan
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: zuiwan-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare Signing Keystore
+        env:
+          SECRET_KEYSTORE: ${{ secrets.KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          mkdir -p app/keystore
+          if [ -n "$SECRET_KEYSTORE" ]; then
+            echo "$SECRET_KEYSTORE" | base64 -d > app/keystore/release.jks
+          else
+            keytool -genkeypair -v \
+              -keystore app/keystore/release.jks \
+              -storepass zuiwan123 \
+              -alias zuiwan \
+              -keypass zuiwan123 \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Zuiwan,O=Zuiwan,C=US"
+          fi
+
+      - name: Build Debug and Release APKs
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+        run: |
+          ./gradlew --console=plain assembleDebug assembleRelease
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/*.apk dist/Zuiwan-debug.apk
+          cp app/build/outputs/apk/release/*.apk dist/Zuiwan.apk
+          ls -lh dist/
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zuiwan-release
+          path: dist/Zuiwan.apk
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zuiwan-debug
+          path: dist/Zuiwan-debug.apk
+
+      - name: Publish Release on Tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          gh release create "$TAG_NAME" dist/Zuiwan.apk dist/Zuiwan-debug.apk \
+            --title "Zuiwan $TAG_NAME" \
+            --generate-notes
