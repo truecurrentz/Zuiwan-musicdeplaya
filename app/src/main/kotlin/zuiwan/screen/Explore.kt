@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,11 +41,13 @@ import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
 import zuiwan.ui.albumcard
 import zuiwan.ui.glass
+import zuiwan.ui.headerscroll
 import zuiwan.ui.iconbtn
 import zuiwan.ui.topbar
 import zuiwan.ui.mediacard
 import zuiwan.ui.picktile
 import zuiwan.ui.Route
+import zuiwan.ui.scrollhost
 import zuiwan.ui.sectionbar
 import zuiwan.ui.songrow
 import zuiwan.ui.ZIcons
