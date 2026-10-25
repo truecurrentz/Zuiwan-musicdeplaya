@@ -20,6 +20,7 @@ sealed interface MatchStage {
     data object Ready : MatchStage
     data object Listening : MatchStage
     data object Processing : MatchStage
+    data object Cancelled : MatchStage
     data class Matched(val result: MatchResult) : MatchStage
     data class NoMatch(val message: String) : MatchStage
     data class Error(val message: String) : MatchStage

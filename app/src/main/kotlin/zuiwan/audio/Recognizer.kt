@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.Build
 import androidx.core.content.ContextCompat
 import io.ktor.client.call.body
 import io.ktor.client.request.header
@@ -54,11 +55,10 @@ class MusicRecognizer(
     private val dao: MusicDao,
     private val tube: TubeClient,
 ) {
-    private val sampleRate = 44_100
     private val channelCfg = AudioFormat.CHANNEL_IN_MONO
     private val pcmFormat = AudioFormat.ENCODING_PCM_16BIT
-    private val earlyDurationMs = 5_000L
-    private val fullDurationMs = 11_500L
+    private val probeTimesMs = longArrayOf(3_600L, 6_800L, 9_800L)
+    private val fullDurationMs = 12_600L
 
     private val stageFlow = MutableStateFlow<MatchStage>(MatchStage.Ready)
     val stage: StateFlow<MatchStage> = stageFlow.asStateFlow()
@@ -87,6 +87,13 @@ class MusicRecognizer(
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
 
+    fun cancellisten() {
+        activeJob?.cancel()
+        activeJob = null
+        levelFlow.value = 0f
+        stageFlow.value = MatchStage.Cancelled
+    }
+
     fun stoplisten() {
         activeJob?.cancel()
         activeJob = null
@@ -104,7 +111,7 @@ class MusicRecognizer(
     @SuppressLint("MissingPermission")
     fun startlisten(scope: CoroutineScope) {
         if (!hasperm()) {
-            stageFlow.value = MatchStage.Error("Microphone permission is required to recognize music")
+            stageFlow.value = MatchStage.Error("Microphone permission is required")
             return
         }
         activeJob?.cancel()
@@ -112,42 +119,24 @@ class MusicRecognizer(
             stageFlow.value = MatchStage.Listening
             levelFlow.value = 0.08f
             try {
-                val minBuf = AudioRecord.getMinBufferSize(sampleRate, channelCfg, pcmFormat)
-                    .coerceAtLeast(4096)
-                val primaryRec = runCatching {
-                    AudioRecord(
-                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                        sampleRate,
-                        channelCfg,
-                        pcmFormat,
-                        minBuf * 2,
-                    )
-                }.getOrNull()
-                val recorder = if (primaryRec?.state == AudioRecord.STATE_INITIALIZED) {
-                    primaryRec
-                } else {
-                    primaryRec?.release()
-                    AudioRecord(
-                        MediaRecorder.AudioSource.MIC,
-                        sampleRate,
-                        channelCfg,
-                        pcmFormat,
-                        minBuf * 2,
-                    )
-                }
-
-                if (recorder.state != AudioRecord.STATE_INITIALIZED) {
-                    recorder.release()
+                val opened = openmic()
+                if (opened == null) {
                     stageFlow.value = MatchStage.Error("Unable to access microphone")
                     levelFlow.value = 0f
                     return@launch
                 }
+                val (recorder, captureRate) = opened
+                val bytesPerSec = captureRate * 2
+                val warmupSkipBytes = (bytesPerSec * 16) / 100
+                var skippedBytes = 0
 
-                val out = ByteArrayOutputStream(sampleRate * 2 * 12)
-                val chunk = ByteArray(minBuf)
+                val out = ByteArrayOutputStream(bytesPerSec * 13)
+                val readChunk = ByteArray((bytesPerSec / 12).coerceAtLeast(4096) and -2)
                 val startedAt = System.currentTimeMillis()
-                var earlyProbe: Deferred<MatchResult?>? = null
-                var earlyHit: MatchResult? = null
+
+                var nextProbeIdx = 0
+                var inflightProbe: Deferred<MatchResult?>? = null
+                var matchedHit: MatchResult? = null
 
                 try {
                     recorder.startRecording()
@@ -155,24 +144,48 @@ class MusicRecognizer(
                         val elapsed = System.currentTimeMillis() - startedAt
                         if (elapsed >= fullDurationMs) break
 
-                        val read = recorder.read(chunk, 0, chunk.size)
+                        val read = recorder.read(readChunk, 0, readChunk.size)
                         if (read > 0) {
-                            out.write(chunk, 0, read)
-                            levelFlow.value = computelevel(chunk, read)
+                            val evenRead = read and -2
+                            if (evenRead > 0) {
+                                val instant = computelevel(readChunk, evenRead)
+                                levelFlow.value = levelFlow.value * 0.45f + instant * 0.55f
+
+                                if (skippedBytes < warmupSkipBytes) {
+                                    val skipNow = (warmupSkipBytes - skippedBytes).coerceAtMost(evenRead)
+                                    skippedBytes += skipNow
+                                    if (evenRead > skipNow) {
+                                        out.write(readChunk, skipNow, evenRead - skipNow)
+                                    }
+                                } else {
+                                    out.write(readChunk, 0, evenRead)
+                                }
+                            }
                         }
 
-                        if (earlyProbe == null && elapsed >= earlyDurationMs && out.size() > sampleRate * 6) {
-                            val snap = out.toByteArray()
-                            earlyProbe = async { probesample(snap).getOrNull() }
-                        }
-
-                        if (earlyProbe?.isCompleted == true) {
-                            val hit = earlyProbe.await()
+                        if (inflightProbe?.isCompleted == true) {
+                            val hit = inflightProbe.await()
+                            inflightProbe = null
                             if (hit != null) {
-                                earlyHit = hit
+                                matchedHit = hit
                                 break
                             }
-                            earlyProbe = null
+                        }
+
+                        if (inflightProbe == null &&
+                            nextProbeIdx < probeTimesMs.size &&
+                            elapsed >= probeTimesMs[nextProbeIdx] &&
+                            out.size() >= bytesPerSec * 3
+                        ) {
+                            val stepIdx = nextProbeIdx
+                            nextProbeIdx++
+                            val allSoFar = out.toByteArray()
+                            val windowBytes = if (stepIdx >= 2) {
+                                slicebytes(allSoFar, maxBytes = bytesPerSec * 8)
+                            } else {
+                                allSoFar
+                            }
+                            inflightProbe = async { probesample(windowBytes, captureRate).getOrNull() }
                         }
                     }
                 } finally {
@@ -183,21 +196,26 @@ class MusicRecognizer(
 
                 stageFlow.value = MatchStage.Processing
 
-                val rawMatch = earlyHit ?: earlyProbe?.await() ?: run {
+                val rawMatch = matchedHit ?: inflightProbe?.await() ?: run {
                     val fullBytes = out.toByteArray()
-                    probesample(fullBytes).getOrElse { err ->
-                        val msg = err.message.orEmpty()
-                        stageFlow.value = if (msg.contains("No match", ignoreCase = true)) {
-                            MatchStage.NoMatch("Could not identify this song. Hold closer and try again.")
-                        } else {
-                            MatchStage.Error(msg.ifBlank { "Recognition failed" })
+                    val tailWindow = slicebytes(fullBytes, maxBytes = bytesPerSec * 10)
+                    val firstTry = probesample(tailWindow, captureRate)
+                    val hit = firstTry.getOrNull() ?: if (fullBytes.size > tailWindow.size + bytesPerSec) {
+                        probesample(fullBytes, captureRate).getOrElse { err ->
+                            stageFlow.value = MatchStage.Error(err.message ?: "Recognition failed")
+                            return@launch
                         }
-                        return@launch
+                    } else {
+                        firstTry.getOrElse { err ->
+                            stageFlow.value = MatchStage.Error(err.message ?: "Recognition failed")
+                            return@launch
+                        }
                     }
+                    hit
                 }
 
                 if (rawMatch == null) {
-                    stageFlow.value = MatchStage.NoMatch("Could not identify this song. Hold closer and try again.")
+                    stageFlow.value = MatchStage.NoMatch("No match found")
                     return@launch
                 }
 
@@ -219,6 +237,41 @@ class MusicRecognizer(
         }
     }
 
+    @SuppressLint("MissingPermission")
+    private fun openmic(): Pair<AudioRecord, Int>? {
+        val sources = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                add(MediaRecorder.AudioSource.UNPROCESSED)
+            }
+            add(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+            add(MediaRecorder.AudioSource.MIC)
+        }
+        val rates = intArrayOf(48_000, 44_100, 16_000)
+
+        for (rate in rates) {
+            val minBuf = AudioRecord.getMinBufferSize(rate, channelCfg, pcmFormat)
+            if (minBuf <= 0) continue
+            val bufSize = (minBuf * 3).coerceAtLeast(8192)
+            for (src in sources) {
+                val rec = runCatching {
+                    AudioRecord(src, rate, channelCfg, pcmFormat, bufSize)
+                }.getOrNull() ?: continue
+                if (rec.state == AudioRecord.STATE_INITIALIZED) {
+                    return rec to rate
+                }
+                runCatching { rec.release() }
+            }
+        }
+        return null
+    }
+
+    private fun slicebytes(all: ByteArray, maxBytes: Int): ByteArray {
+        val evenMax = maxBytes and -2
+        if (all.size <= evenMax) return all
+        val start = (all.size - evenMax) and -2
+        return all.copyOfRange(start, all.size and -2)
+    }
+
     private fun computelevel(buf: ByteArray, len: Int): Float {
         val shorts = len / 2
         if (shorts <= 0) return 0f
@@ -229,13 +282,13 @@ class MusicRecognizer(
             sumSq += v * v
         }
         val rms = sqrt(sumSq / shorts)
-        return (rms / 6500.0).toFloat().coerceIn(0.05f, 1f)
+        return (rms / 4500.0).toFloat().coerceIn(0.05f, 1f)
     }
 
-    private suspend fun probesample(raw44k: ByteArray): Result<MatchResult?> =
+    private suspend fun probesample(rawBytes: ByteArray, inputRate: Int): Result<MatchResult?> =
         runCatching {
-            val resampled = AudioPrint.resamplepcm(raw44k, sampleRate, AudioPrint.targetRate)
-            if (resampled.size < AudioPrint.targetRate * 2) return@runCatching null
+            val resampled = AudioPrint.resamplepcm(rawBytes, inputRate, AudioPrint.targetRate)
+            if (resampled.size < AudioPrint.targetRate * 2 * 2) return@runCatching null
             val sig = AudioPrint.makesig(resampled)
             val durationMs = (resampled.size / 2) * 1_000L / AudioPrint.targetRate
             queryshazam(sig, durationMs)
@@ -279,7 +332,7 @@ class MusicRecognizer(
                     if (!res.status.isSuccess()) {
                         val code = res.status.value
                         if (code == 429 && attempt == 0) {
-                            delay(1_500L)
+                            delay(1_400L)
                             continue
                         }
                         if (code == 404) return@withContext null
@@ -291,7 +344,7 @@ class MusicRecognizer(
                     throw c
                 } catch (e: Exception) {
                     lastErr = e
-                    if (attempt == 0) delay(900L)
+                    if (attempt == 0) delay(800L)
                 }
             }
             if (lastErr != null) throw lastErr
@@ -335,17 +388,25 @@ class MusicRecognizer(
     suspend fun resolvetrack(match: MatchResult): MatchResult =
         withContext(Dispatchers.IO) {
             val query = "${match.title} ${match.artist}".trim()
-            val searched = tube.searchmusic(query, SearchTab.SONGS).getOrNull()
+            val searchedSong = tube.searchmusic(query, SearchTab.SONGS).getOrNull()
                 ?.items
                 ?.firstNotNullOfOrNull { (it as? FeedItem.SongCard)?.track }
 
-            val byVideo = if (searched == null && !match.videoId.isNullOrBlank()) {
+            val searchedVideo = if (searchedSong == null) {
+                tube.searchmusic(query, SearchTab.VIDEOS).getOrNull()
+                    ?.items
+                    ?.firstNotNullOfOrNull { (it as? FeedItem.SongCard)?.track }
+            } else {
+                null
+            }
+
+            val byVideo = if (searchedSong == null && searchedVideo == null && !match.videoId.isNullOrBlank()) {
                 tube.loadnext(videoId = match.videoId).getOrNull()?.tracks?.firstOrNull()
             } else {
                 null
             }
 
-            val resolved = searched ?: byVideo ?: match.videoId?.let { vid ->
+            val resolved = searchedSong ?: searchedVideo ?: byVideo ?: match.videoId?.let { vid ->
                 Track(
                     id = vid,
                     title = match.title,

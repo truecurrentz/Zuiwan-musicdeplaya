@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -475,7 +476,7 @@ fun viewsettings(
                                 navitem(
                                     icon = ZIcons.Info,
                                     title = "About Zuiwan",
-                                    subtitle = "Version 1.0.0",
+                                    subtitle = "A free music player, import, export ur songs, enjoy the free service!",
                                     position = GroupPos.BOTTOM,
                                     onClick = { page = SettingsPage.ABOUT },
                                 )
@@ -868,9 +869,10 @@ fun viewsettings(
                                     }
                                     Spacer(Modifier.height(14.dp))
                                     Text(
-                                        text = "Refined YouTube Music streaming client crafted with Dark & White frosted glass, synced word lyrics, offline vault, and 10-band studio DSP.",
+                                        text = "A free music player, import, export ur songs, enjoy the free service!",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = glassTokens.inkSecondary,
+                                        textAlign = TextAlign.Center,
                                     )
                                 }
                             }

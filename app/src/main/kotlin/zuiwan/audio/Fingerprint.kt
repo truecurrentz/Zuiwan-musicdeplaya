@@ -9,10 +9,12 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.zip.CRC32
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 object AudioPrint {
     const val targetRate = 16_000
@@ -36,20 +38,44 @@ object AudioPrint {
         val count = rawBytes.size / 2
         val inSamples = ShortArray(count)
         ByteBuffer.wrap(rawBytes, 0, count * 2).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(inSamples)
+
         val ratio = outputRate.toDouble() / inputRate.toDouble()
         val outLen = (count * ratio).toInt()
+        if (outLen <= 0) return@withContext ByteArray(0)
+
         val outSamples = ShortArray(outLen)
+        val cutoff = 0.465 * ratio.coerceAtMost(1.0)
+        val halfWin = 12
+
         for (i in 0 until outLen) {
             if (i and 1023 == 0) ensureActive()
-            val srcPos = i / ratio
-            val idx = srcPos.toInt()
-            val frac = srcPos - idx
-            outSamples[i] = if (idx + 1 < count) {
-                (inSamples[idx] * (1.0 - frac) + inSamples[idx + 1] * frac).toInt().toShort()
-            } else {
-                inSamples[idx]
+            val center = i / ratio
+            val cInt = center.toInt()
+            var acc = 0.0
+            var wSum = 0.0
+            val start = (cInt - halfWin).coerceAtLeast(0)
+            val end = (cInt + halfWin).coerceAtMost(count - 1)
+            for (k in start..end) {
+                val x = k - center
+                val sinc = if (abs(x) < 1e-7) {
+                    2.0 * cutoff
+                } else {
+                    sin(2.0 * PI * cutoff * x) / (PI * x)
+                }
+                val winPos = (x + halfWin) / (2.0 * halfWin)
+                val hamming = if (winPos in 0.0..1.0) {
+                    0.54 - 0.46 * cos(2.0 * PI * winPos)
+                } else {
+                    0.0
+                }
+                val w = sinc * hamming
+                acc += inSamples[k] * w
+                wSum += w
             }
+            val filtered = if (abs(wSum) > 1e-9) acc / wSum else 0.0
+            outSamples[i] = filtered.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
+
         val outBytes = ByteArray(outLen * 2)
         ByteBuffer.wrap(outBytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(outSamples)
         outBytes
@@ -58,9 +84,45 @@ object AudioPrint {
     fun makesig(pcmBytes: ByteArray): String {
         val evenLen = pcmBytes.size and -2
         require(evenLen >= 256) { "Audio sample too short" }
-        val pcm = ShortArray(evenLen / 2)
-        ByteBuffer.wrap(pcmBytes, 0, evenLen).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(pcm)
+        val raw = ShortArray(evenLen / 2)
+        ByteBuffer.wrap(pcmBytes, 0, evenLen).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(raw)
+        val pcm = cleanpcm(raw)
         return SigState().runpass(pcm)
+    }
+
+    private fun cleanpcm(input: ShortArray): ShortArray {
+        if (input.isEmpty()) return input
+        val hp = DoubleArray(input.size)
+        val alpha = 0.966
+        var prevIn = input[0].toDouble()
+        var prevOut = 0.0
+        var sumSq = 0.0
+
+        for (i in input.indices) {
+            val cur = input[i].toDouble()
+            val y = alpha * (prevOut + cur - prevIn)
+            prevIn = cur
+            prevOut = y
+            hp[i] = y
+            sumSq += y * y
+        }
+
+        val rms = sqrt(sumSq / input.size)
+        val gain = if (rms > 18.0) {
+            (5800.0 / rms).coerceIn(1.0, 24.0)
+        } else {
+            1.0
+        }
+
+        return ShortArray(input.size) { i ->
+            val scaled = hp[i] * gain
+            val soft = when {
+                scaled > 29000.0 -> 29000.0 + (scaled - 29000.0) * 0.18
+                scaled < -29000.0 -> -29000.0 + (scaled + 29000.0) * 0.18
+                else -> scaled
+            }
+            soft.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
     }
 
     private data class PeakPoint(
