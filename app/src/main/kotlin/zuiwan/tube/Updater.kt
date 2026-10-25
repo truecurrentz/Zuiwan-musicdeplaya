@@ -9,9 +9,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import app.zuiwan.BuildConfig
 import app.zuiwan.R
 import io.ktor.client.request.get
@@ -21,13 +23,20 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import zuiwan.Activity
 import zuiwan.model.GhRelease
 import zuiwan.model.GhRunsPayload
 import zuiwan.model.ReleaseNote
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.time.Instant
+import java.util.zip.ZipFile
+import kotlin.coroutines.coroutineContext
 
 class AppUpdater(
     private val context: Context,
@@ -36,6 +45,7 @@ class AppUpdater(
     private val channelId = "updates"
     private val notifyId = 1001
     private val cacheWindowMs = 2 * 60 * 60 * 1_000L
+    private val verRegex = Regex("""(\d+(?:\.\d+)+(?:-?[A-Za-z0-9.]+)?)""")
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -63,8 +73,6 @@ class AppUpdater(
             nm?.createNotificationChannel(channel)
         }
     }
-
-    private val verRegex = Regex("""(\d+(?:\.\d+)+(?:-?[A-Za-z0-9.]+)?)""")
 
     private fun extractver(raw: String): String {
         val trimmed = raw.trim()
@@ -232,14 +240,17 @@ class AppUpdater(
     private fun maprelease(rel: GhRelease): ReleaseNote {
         val rawVer = extractver(rel.tagName).ifBlank { extractver(rel.name) }
         val apkAssets = rel.assets.filter {
-            it.name.endsWith(".apk", ignoreCase = true) && it.downloadUrl.isNotBlank()
+            (it.name.endsWith(".apk", ignoreCase = true) || it.name.endsWith(".zip", ignoreCase = true)) &&
+                it.downloadUrl.isNotBlank()
         }
+        val onlyApks = apkAssets.filter { it.name.endsWith(".apk", ignoreCase = true) }
+        val pool = onlyApks.ifEmpty { apkAssets }
         val preferred = if (BuildConfig.DEBUG) {
-            apkAssets.firstOrNull { it.name.contains("debug", ignoreCase = true) }
-                ?: apkAssets.firstOrNull()
+            pool.firstOrNull { it.name.contains("debug", ignoreCase = true) }
+                ?: pool.firstOrNull()
         } else {
-            apkAssets.firstOrNull { !it.name.contains("debug", ignoreCase = true) }
-                ?: apkAssets.firstOrNull()
+            pool.firstOrNull { !it.name.contains("debug", ignoreCase = true) }
+                ?: pool.firstOrNull()
         }
         val fallbackPage = rel.htmlUrl.ifBlank {
             "https://github.com/${BuildConfig.GITHUB_REPO}/releases"
@@ -258,6 +269,178 @@ class AppUpdater(
         )
     }
 
+    fun isdirectapk(url: String): Boolean {
+        val clean = url.substringBefore("?").lowercase()
+        return clean.endsWith(".apk") ||
+            clean.endsWith(".zip") ||
+            url.contains("/releases/download/", ignoreCase = true)
+    }
+
+    fun caninstall(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.packageManager.canRequestPackageInstalls()
+        } else {
+            true
+        }
+    }
+
+    fun opensources() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${context.packageName}"),
+            ).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            runCatching { context.startActivity(intent) }
+        }
+    }
+
+    fun openbrowser(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(intent) }
+    }
+
+    suspend fun downloadapk(
+        release: ReleaseNote,
+        onProgress: (Float) -> Unit,
+    ): Result<File> = withContext(Dispatchers.IO) {
+        try {
+            val dir = File(context.cacheDir, "updates").apply { mkdirs() }
+            dir.listFiles()?.forEach { runCatching { it.delete() } }
+
+            val rawFile = File(dir, "payload.bin")
+            val finalApk = File(dir, "Zuiwan-update.apk")
+
+            val conn = openconn(release.downloadUrl)
+            try {
+                val total = conn.contentLengthLong.takeIf { it > 0L } ?: release.apkSizeBytes
+                conn.inputStream.use { ins ->
+                    FileOutputStream(rawFile).use { outs ->
+                        val buf = ByteArray(16 * 1024)
+                        var downloaded = 0L
+                        var lastEmit = 0L
+                        while (true) {
+                            coroutineContext.ensureActive()
+                            val n = ins.read(buf)
+                            if (n < 0) break
+                            if (n > 0) {
+                                outs.write(buf, 0, n)
+                                downloaded += n
+                                val now = System.currentTimeMillis()
+                                if (total > 0L && now - lastEmit >= 75L) {
+                                    lastEmit = now
+                                    onProgress((downloaded.toFloat() / total.toFloat()).coerceIn(0.01f, 0.98f))
+                                }
+                            }
+                        }
+                        outs.flush()
+                    }
+                }
+            } finally {
+                runCatching { conn.disconnect() }
+            }
+
+            unpackapk(rawFile, finalApk)
+            runCatching { rawFile.delete() }
+            onProgress(1f)
+            Result.success(finalApk)
+        } catch (c: CancellationException) {
+            throw c
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun openconn(startUrl: String): HttpURLConnection {
+        var current = startUrl
+        repeat(8) {
+            val conn = (URL(current).openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = false
+                connectTimeout = 20_000
+                readTimeout = 30_000
+                setRequestProperty("User-Agent", "Zuiwan/${BuildConfig.VERSION_NAME}")
+                setRequestProperty("Accept", "application/octet-stream, */*")
+            }
+            val code = conn.responseCode
+            if (code in intArrayOf(301, 302, 303, 307, 308)) {
+                val loc = conn.getHeaderField("Location")
+                conn.disconnect()
+                if (loc.isNullOrBlank()) error("Redirect missing Location header")
+                current = URL(URL(current), loc).toString()
+            } else if (code in 200..299) {
+                return conn
+            } else {
+                conn.disconnect()
+                error("Download server returned HTTP $code")
+            }
+        }
+        error("Too many redirects while downloading update")
+    }
+
+    @Suppress("DEPRECATION")
+    private fun unpackapk(rawFile: File, targetApk: File) {
+        if (!rawFile.exists() || rawFile.length() < 64L * 1024L) {
+            error("Downloaded update file is incomplete")
+        }
+
+        ZipFile(rawFile).use { zip ->
+            val hasManifest = zip.getEntry("AndroidManifest.xml") != null
+            if (hasManifest) {
+                rawFile.copyTo(targetApk, overwrite = true)
+            } else {
+                val entries = zip.entries().toList().filter {
+                    !it.isDirectory && it.name.endsWith(".apk", ignoreCase = true)
+                }
+                val chosen = if (BuildConfig.DEBUG) {
+                    entries.firstOrNull { it.name.contains("debug", ignoreCase = true) }
+                        ?: entries.firstOrNull()
+                } else {
+                    entries.firstOrNull { !it.name.contains("debug", ignoreCase = true) }
+                        ?: entries.firstOrNull()
+                } ?: error("Archive does not contain an APK file")
+
+                zip.getInputStream(chosen).use { zIn ->
+                    FileOutputStream(targetApk).use { fOut ->
+                        zIn.copyTo(fOut, 16 * 1024)
+                    }
+                }
+            }
+        }
+
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getPackageArchiveInfo(
+                targetApk.absolutePath,
+                PackageManager.PackageInfoFlags.of(0L),
+            )
+        } else {
+            context.packageManager.getPackageArchiveInfo(targetApk.absolutePath, 0)
+        } ?: error("Downloaded APK package could not be parsed")
+
+        if (info.packageName != context.packageName) {
+            error("Package mismatch (${info.packageName} vs ${context.packageName})")
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    fun launchapk(apkFile: File): Result<Unit> = runCatching {
+        require(apkFile.exists() && apkFile.length() > 0L) { "Update APK file not found" }
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            apkFile,
+        )
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+            putExtra(Intent.EXTRA_INSTALLER_PACKAGE_NAME, context.packageName)
+        }
+        context.startActivity(intent)
+    }
+
     fun postalert(release: ReleaseNote) {
         initchannel()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -268,17 +451,21 @@ class AppUpdater(
             if (!granted) return
         }
 
+        val pFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+
         val openIntent = Intent(context, Activity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("open_update", true)
         }
-        val pFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val openPending = PendingIntent.getActivity(context, 1001, openIntent, pFlags)
 
-        val dlIntent = Intent(Intent.ACTION_VIEW, Uri.parse(release.downloadUrl))
-        val dlPending = PendingIntent.getActivity(context, 1002, dlIntent, pFlags)
+        val installIntent = Intent(context, Activity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("install_update", true)
+        }
+        val installPending = PendingIntent.getActivity(context, 1002, installIntent, pFlags)
 
-        val headline = "Zuiwan ${release.versionName} is ready to download"
+        val headline = "Zuiwan ${release.versionName} is ready to update"
         val firstNotes = release.body
             .lineSequence()
             .map { it.trim().removePrefix("- ").removePrefix("* ").removePrefix("#").trim() }
@@ -295,7 +482,7 @@ class AppUpdater(
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(openPending)
             .setAutoCancel(true)
-            .addAction(0, "Download", dlPending)
+            .addAction(0, "Update", installPending)
             .build()
 
         runCatching {

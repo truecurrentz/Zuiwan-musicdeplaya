@@ -68,6 +68,7 @@ import zuiwan.tube.ExportKind
 import zuiwan.tube.PlaylistTransfer
 import zuiwan.tube.StreamEngine
 import zuiwan.tube.TubeClient
+import java.io.File
 import java.util.UUID
 
 val LocalHub = staticCompositionLocalOf<Hub> { error("Hub missing") }
@@ -94,6 +95,7 @@ class Hub(val appContext: Context) {
 
     private val updatePromptFlow = MutableStateFlow<ReleaseNote?>(null)
     val updatePrompt: StateFlow<ReleaseNote?> = updatePromptFlow.asStateFlow()
+    private var pendingInstallApk: File? = null
 
     private val noticeFlow = MutableStateFlow(NoticeState())
     val notice: StateFlow<NoticeState> = noticeFlow.asStateFlow()
@@ -905,7 +907,8 @@ class Hub(val appContext: Context) {
                     includePre = curSettings.nightlyUpdates,
                 ).getOrDefault(emptyList())
 
-                updateStateFlow.value = UpdateStatus(
+                val prev = updateStateFlow.value
+                updateStateFlow.value = prev.copy(
                     checking = false,
                     hasUpdate = hasNew && release != null,
                     latest = release,
@@ -964,6 +967,129 @@ class Hub(val appContext: Context) {
                         subtitle = msg,
                     )
                 }
+            }
+        }
+    }
+
+    fun resumepending() {
+        val pending = pendingInstallApk ?: return
+        if (!updater.caninstall()) return
+        pendingInstallApk = null
+        updater.launchapk(pending).onFailure { err ->
+            shownotice(
+                kind = NoticeKind.ERROR,
+                title = "Installer Error",
+                subtitle = err.message ?: "Unable to launch installer",
+            )
+        }
+    }
+
+    fun installupdate(target: ReleaseNote? = null) {
+        val release = target ?: updateStateFlow.value.latest ?: return
+        if (updateStateFlow.value.downloading) return
+
+        if (!updater.isdirectapk(release.downloadUrl)) {
+            hideupdate(rememberTag = false)
+            updater.openbrowser(release.downloadUrl)
+            return
+        }
+
+        val curState = updateStateFlow.value
+        val existing = curState.readyApkPath
+            ?.takeIf { curState.readyTag == release.tagName }
+            ?.let(::File)
+            ?.takeIf { it.exists() && it.length() > 0L }
+
+        if (existing != null) {
+            if (!updater.caninstall()) {
+                pendingInstallApk = existing
+                shownotice(
+                    kind = NoticeKind.INFO,
+                    title = "Allow App Updates",
+                    subtitle = "Enable Install Unknown Apps to update in-place",
+                )
+                updater.opensources()
+                return
+            }
+            hideupdate(rememberTag = false)
+            updater.launchapk(existing).onFailure { err ->
+                shownotice(
+                    kind = NoticeKind.ERROR,
+                    title = "Installer Error",
+                    subtitle = err.message ?: "Unable to open update package",
+                )
+            }
+            return
+        }
+
+        scope.launch {
+            updateStateFlow.value = updateStateFlow.value.copy(
+                downloading = true,
+                downloadProgress = 0.02f,
+                error = null,
+            )
+            shownotice(
+                kind = NoticeKind.LOADING,
+                title = "Downloading Zuiwan v${release.versionName}",
+                subtitle = "Preparing in-place update",
+                progress = 0.02f,
+            )
+
+            updater.downloadapk(release) { prog ->
+                updateStateFlow.value = updateStateFlow.value.copy(
+                    downloading = true,
+                    downloadProgress = prog,
+                )
+                updatenotice(
+                    kind = NoticeKind.LOADING,
+                    title = "Downloading Zuiwan v${release.versionName}",
+                    subtitle = "Preparing in-place update",
+                    progress = prog,
+                )
+            }.onSuccess { apkFile ->
+                updateStateFlow.value = updateStateFlow.value.copy(
+                    downloading = false,
+                    downloadProgress = 1f,
+                    readyTag = release.tagName,
+                    readyApkPath = apkFile.absolutePath,
+                    error = null,
+                )
+
+                if (!updater.caninstall()) {
+                    pendingInstallApk = apkFile
+                    shownotice(
+                        kind = NoticeKind.UPDATE,
+                        title = "Allow App Updates",
+                        subtitle = "Enable switch once — Zuiwan will update right away",
+                    )
+                    updater.opensources()
+                } else {
+                    hideupdate(rememberTag = false)
+                    shownotice(
+                        kind = NoticeKind.SUCCESS,
+                        title = "Update Ready",
+                        subtitle = "Confirm Update in the system prompt",
+                    )
+                    updater.launchapk(apkFile).onFailure { err ->
+                        shownotice(
+                            kind = NoticeKind.ERROR,
+                            title = "Installer Error",
+                            subtitle = err.message ?: "Unable to launch package installer",
+                        )
+                    }
+                }
+            }.onFailure { err ->
+                val msg = err.message ?: "Download failed"
+                updateStateFlow.value = updateStateFlow.value.copy(
+                    downloading = false,
+                    downloadProgress = 0f,
+                    error = msg,
+                )
+                shownotice(
+                    kind = NoticeKind.ERROR,
+                    title = "Update Download Failed",
+                    subtitle = msg,
+                )
             }
         }
     }

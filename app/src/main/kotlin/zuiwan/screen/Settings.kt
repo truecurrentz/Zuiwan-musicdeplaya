@@ -62,7 +62,6 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -136,7 +135,6 @@ fun viewsettings(
     val hub = LocalHub.current
     val glassTokens = LocalGlass.current
     val context = LocalContext.current
-    val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
 
     val settings by hub.settings.collectAsState()
@@ -216,6 +214,10 @@ fun viewsettings(
         changelogsheet(
             releases = updateState.releases,
             loading = updateState.checking && updateState.releases.isEmpty(),
+            onInstall = { rel ->
+                showChangelogSheet = false
+                hub.installupdate(rel)
+            },
             onRefresh = { hub.loadchangelog(force = true) },
             onDismiss = { showChangelogSheet = false },
         )
@@ -599,13 +601,18 @@ fun viewsettings(
                                         }
 
                                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            val dlText = when {
+                                                updateState.downloading ->
+                                                    "Downloading ${(updateState.downloadProgress * 100f).toInt()}%"
+                                                updateState.readyTag == readyRelease.tagName &&
+                                                    !updateState.readyApkPath.isNullOrBlank() -> "Install Update"
+                                                else -> "Update Now"
+                                            }
                                             pillbtn(
-                                                text = "Download",
+                                                text = dlText,
                                                 icon = ZIcons.Download,
                                                 primary = true,
-                                                onClick = {
-                                                    runCatching { uriHandler.openUri(readyRelease.downloadUrl) }
-                                                },
+                                                onClick = { hub.installupdate(readyRelease) },
                                                 modifier = Modifier.weight(1f),
                                             )
                                             pillbtn(
@@ -1203,13 +1210,19 @@ fun viewsettings(
                                                 "New improvements and fixes ready to install."
                                             },
                                         )
+                                        val btnText = when {
+                                            updateState.downloading ->
+                                                "Downloading ${(updateState.downloadProgress * 100f).toInt()}%..."
+                                            updateState.readyTag == found.tagName &&
+                                                !updateState.readyApkPath.isNullOrBlank() ->
+                                                "Install v${found.versionName}"
+                                            else -> "Update to v${found.versionName}"
+                                        }
                                         pillbtn(
-                                            text = "Download v${found.versionName}",
+                                            text = btnText,
                                             icon = ZIcons.Download,
                                             primary = true,
-                                            onClick = {
-                                                runCatching { uriHandler.openUri(found.downloadUrl) }
-                                            },
+                                            onClick = { hub.installupdate(found) },
                                             modifier = Modifier.fillMaxWidth(),
                                         )
                                     }

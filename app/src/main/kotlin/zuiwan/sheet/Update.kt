@@ -1,5 +1,8 @@
 package zuiwan.sheet
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +31,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,11 +54,14 @@ import java.util.Locale
 @Composable
 fun updatesheet(
     release: ReleaseNote,
+    downloading: Boolean = false,
+    progress: Float = 0f,
+    readyToInstall: Boolean = false,
+    onInstall: () -> Unit,
     onDismiss: () -> Unit,
     onLater: () -> Unit,
 ) {
     val glassTokens = LocalGlass.current
-    val uriHandler = LocalUriHandler.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -162,7 +169,7 @@ fun updatesheet(
                 contentPadding = PaddingValues(18.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 310.dp),
+                    .heightIn(max = 290.dp),
             ) {
                 Column(
                     modifier = Modifier
@@ -184,6 +191,54 @@ fun updatesheet(
                 }
             }
 
+            if (downloading) {
+                val smooth by animateFloatAsState(
+                    targetValue = progress.coerceIn(0.03f, 1f),
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessLow,
+                    ),
+                    label = "dlBar",
+                )
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = "Downloading update package...",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = glassTokens.inkSecondary,
+                    )
+                    Text(
+                        text = "${(smooth * 100f).toInt()}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = glassTokens.accent,
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(5.dp)
+                        .clip(CircleShape)
+                        .background(glassTokens.ink.copy(alpha = 0.09f)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(smooth)
+                            .height(5.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(glassTokens.accent, glassTokens.accentSecondary),
+                                ),
+                            ),
+                    )
+                }
+            }
+
             Spacer(Modifier.height(18.dp))
 
             Row(
@@ -196,15 +251,17 @@ fun updatesheet(
                     onClick = onLater,
                     modifier = Modifier.weight(1f),
                 )
+                val primaryLabel = when {
+                    downloading -> "Downloading..."
+                    readyToInstall -> "Install Update"
+                    else -> "Update Now"
+                }
                 pillbtn(
-                    text = "Download",
-                    icon = ZIcons.Download,
+                    text = primaryLabel,
+                    icon = if (readyToInstall) ZIcons.Check else ZIcons.Download,
                     primary = true,
-                    onClick = {
-                        onDismiss()
-                        runCatching { uriHandler.openUri(release.downloadUrl) }
-                    },
-                    modifier = Modifier.weight(1.35f),
+                    onClick = { if (!downloading) onInstall() },
+                    modifier = Modifier.weight(1.45f),
                 )
             }
         }
@@ -216,6 +273,7 @@ fun updatesheet(
 fun changelogsheet(
     releases: List<ReleaseNote>,
     loading: Boolean,
+    onInstall: (ReleaseNote) -> Unit,
     onRefresh: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -317,7 +375,7 @@ fun changelogsheet(
                             .heightIn(max = 420.dp),
                     ) {
                         items(releases, key = { it.tagName }) { rel ->
-                            releasecard(rel)
+                            releasecard(rel, onInstall = { onInstall(rel) })
                         }
                     }
                 }
@@ -337,9 +395,11 @@ fun changelogsheet(
 }
 
 @Composable
-private fun releasecard(release: ReleaseNote) {
+private fun releasecard(
+    release: ReleaseNote,
+    onInstall: () -> Unit,
+) {
     val glassTokens = LocalGlass.current
-    val uriHandler = LocalUriHandler.current
 
     glass(
         shape = RoundedCornerShape(22.dp),
@@ -382,7 +442,7 @@ private fun releasecard(release: ReleaseNote) {
                     size = 32.dp,
                     iconSize = 16.dp,
                     tint = glassTokens.accent,
-                    onClick = { runCatching { uriHandler.openUri(release.downloadUrl) } },
+                    onClick = onInstall,
                 )
             }
 

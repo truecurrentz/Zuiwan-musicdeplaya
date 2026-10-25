@@ -79,6 +79,7 @@ import zuiwan.ui.Route
 class Activity : ComponentActivity() {
     private var incomingUrl by mutableStateOf<String?>(null)
     private var openUpdateReq by mutableStateOf(false)
+    private var installUpdateReq by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,6 +89,7 @@ class Activity : ComponentActivity() {
         )
         incomingUrl = intent?.dataString
         openUpdateReq = intent?.getBooleanExtra("open_update", false) == true
+        installUpdateReq = intent?.getBooleanExtra("install_update", false) == true
         val hub = (application as App).hub
 
         setContent {
@@ -98,9 +100,16 @@ class Activity : ComponentActivity() {
                     onDeepLinkConsumed = { incomingUrl = null },
                     openUpdate = openUpdateReq,
                     onOpenUpdateConsumed = { openUpdateReq = false },
+                    installUpdate = installUpdateReq,
+                    onInstallUpdateConsumed = { installUpdateReq = false },
                 )
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        (application as App).hub.resumepending()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -108,6 +117,9 @@ class Activity : ComponentActivity() {
         incomingUrl = intent.dataString
         if (intent.getBooleanExtra("open_update", false)) {
             openUpdateReq = true
+        }
+        if (intent.getBooleanExtra("install_update", false)) {
+            installUpdateReq = true
         }
     }
 }
@@ -119,6 +131,8 @@ private fun rootview(
     onDeepLinkConsumed: () -> Unit,
     openUpdate: Boolean,
     onOpenUpdateConsumed: () -> Unit,
+    installUpdate: Boolean,
+    onInstallUpdateConsumed: () -> Unit,
 ) {
     val context = LocalContext.current
     val settings by hub.settings.collectAsState()
@@ -126,6 +140,7 @@ private fun rootview(
     val likedIds by hub.likedIds.collectAsState()
     val notice by hub.notice.collectAsState()
     val updatePrompt by hub.updatePrompt.collectAsState()
+    val updateState by hub.updateState.collectAsState()
 
     val nav = remember { NavStack() }
     val stateHolder = rememberSaveableStateHolder()
@@ -169,6 +184,19 @@ private fun rootview(
                 hub.openupdate()
             } else {
                 nav.open(Route.Settings)
+                hub.runupdater(force = true, manual = true)
+            }
+        }
+    }
+
+    LaunchedEffect(installUpdate) {
+        if (installUpdate) {
+            onInstallUpdateConsumed()
+            playerExpanded = false
+            val target = hub.updateState.value.latest
+            if (target != null) {
+                hub.installupdate(target)
+            } else {
                 hub.runupdater(force = true, manual = true)
             }
         }
@@ -400,6 +428,10 @@ private fun rootview(
                 updatePrompt?.let { target ->
                     updatesheet(
                         release = target,
+                        downloading = updateState.downloading,
+                        progress = updateState.downloadProgress,
+                        readyToInstall = updateState.readyTag == target.tagName && !updateState.readyApkPath.isNullOrBlank(),
+                        onInstall = { hub.installupdate(target) },
                         onDismiss = { hub.hideupdate(rememberTag = false) },
                         onLater = { hub.hideupdate(rememberTag = true) },
                     )

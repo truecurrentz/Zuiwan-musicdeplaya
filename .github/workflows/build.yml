@@ -42,19 +42,11 @@ jobs:
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           fi
           chmod +x gradlew
-          mkdir -p app/keystore
           if [ -n "$SECRET_KEYSTORE" ]; then
+            mkdir -p app/keystore
             echo "$SECRET_KEYSTORE" | base64 -d > app/keystore/release.jks
           else
-            keytool -genkeypair -v \
-              -keystore app/keystore/release.jks \
-              -storepass zuiwan123 \
-              -alias zuiwan \
-              -keypass zuiwan123 \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Zuiwan,O=Zuiwan,C=US"
+            keytool -list -keystore app/signing/zuiwan.p12 -storepass zuiwan123
           fi
 
       - name: Build Debug and Release APKs
@@ -70,6 +62,11 @@ jobs:
           mkdir -p dist
           cp app/build/outputs/apk/debug/*.apk dist/Zuiwan-debug.apk
           cp app/build/outputs/apk/release/*.apk dist/Zuiwan.apk
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          if [ -x "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --verbose --print-certs dist/Zuiwan.apk
+            "$APKSIGNER" verify --verbose --print-certs dist/Zuiwan-debug.apk
+          fi
           ls -lh dist/
 
       - name: Upload Release APK

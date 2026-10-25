@@ -1,6 +1,12 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-val releaseKeystoreFile = file("keystore/release.jks")
+val customKeystoreFile = file("keystore/release.jks")
+val bundledKeystoreFile = file("signing/zuiwan.p12")
+val activeKeystoreFile = if (customKeystoreFile.exists()) customKeystoreFile else bundledKeystoreFile
+val autoVersionCode: Int =
+    ((System.currentTimeMillis() / 1_000L - 1_700_000_000L) / 10L)
+        .toInt()
+        .coerceAtLeast(100)
 val currentGitSha: String =
     runCatching {
         providers
@@ -27,7 +33,7 @@ android {
         applicationId = "app.zuiwan"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+        versionCode = autoVersionCode
         versionName = "1.0.0"
         vectorDrawables.useSupportLibrary = true
         buildConfigField("String", "GIT_SHA", "\"$currentGitSha\"")
@@ -36,13 +42,14 @@ android {
     }
 
     signingConfigs {
-        if (releaseKeystoreFile.exists()) {
-            create("release") {
-                storeFile = releaseKeystoreFile
-                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "zuiwan123"
-                keyAlias = System.getenv("KEY_ALIAS") ?: "zuiwan"
-                keyPassword = System.getenv("KEY_PASSWORD") ?: "zuiwan123"
-            }
+        create("release") {
+            storeFile = activeKeystoreFile
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "zuiwan123"
+            keyAlias = System.getenv("KEY_ALIAS") ?: "zuiwan"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: "zuiwan123"
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
 
@@ -52,12 +59,7 @@ android {
             isShrinkResources = true
             isCrunchPngs = false
             isDebuggable = false
-            signingConfig =
-                if (releaseKeystoreFile.exists()) {
-                    signingConfigs.getByName("release")
-                } else {
-                    signingConfigs.getByName("debug")
-                }
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard.pro",
@@ -66,6 +68,7 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             isDebuggable = true
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

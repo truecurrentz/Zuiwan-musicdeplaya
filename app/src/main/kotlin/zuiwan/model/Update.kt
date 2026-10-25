@@ -66,5 +66,9 @@ data class UpdateStatus(
     val latest: ReleaseNote? = null,
     val releases: List<ReleaseNote> = emptyList(),
     val lastCheckedAt: Long = 0L,
+    val downloading: Boolean = false,
+    val downloadProgress: Float = 0f,
+    val readyTag: String = "",
+    val readyApkPath: String? = null,
     val error: String? = null,
 )
