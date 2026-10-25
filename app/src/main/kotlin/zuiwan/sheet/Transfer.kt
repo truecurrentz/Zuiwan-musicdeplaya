@@ -372,7 +372,7 @@ fun importsheet(
                     }
                     pillbtn(
                         text = "Analyze Input",
-                        icon = ZIcons.Sparkle,
+                        icon = ZIcons.Sparkles,
                         primary = false,
                         onClick = {
                             if (rawText.isNotBlank() && !busy) {

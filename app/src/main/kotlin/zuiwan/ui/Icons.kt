@@ -726,6 +726,20 @@ object ZIcons {
         verticalLineTo(16.4f)
     }
 
+    val Folder: ImageVector = stroke("Folder") {
+        moveTo(3.5f, 7.2f)
+        curveTo(3.5f, 6f, 4.4f, 5f, 5.6f, 5f)
+        horizontalLineTo(9.4f)
+        lineTo(11.4f, 7.3f)
+        horizontalLineTo(18.4f)
+        curveTo(19.6f, 7.3f, 20.5f, 8.2f, 20.5f, 9.4f)
+        verticalLineTo(17.4f)
+        curveTo(20.5f, 18.6f, 19.6f, 19.5f, 18.4f, 19.5f)
+        horizontalLineTo(5.6f)
+        curveTo(4.4f, 19.5f, 3.5f, 18.6f, 3.5f, 17.4f)
+        close()
+    }
+
     val Sun: ImageVector = stroke("Sun") {
         moveTo(12f, 7.5f)
         arcTo(4.5f, 4.5f, 0f, true, true, 11.99f, 7.5f)

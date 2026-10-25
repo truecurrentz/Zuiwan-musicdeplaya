@@ -282,7 +282,7 @@ private fun noticeorb(
                     }
                 }
                 Icon(
-                    imageVector = if (kind == NoticeKind.SYNC) ZIcons.Sync else ZIcons.Sparkle,
+                    imageVector = if (kind == NoticeKind.SYNC) ZIcons.Sync else ZIcons.Sparkles,
                     contentDescription = null,
                     tint = glassTokens.accent,
                     modifier = Modifier
@@ -378,7 +378,7 @@ private fun noticeorb(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = ZIcons.Sparkle,
+                    imageVector = ZIcons.Sparkles,
                     contentDescription = null,
                     tint = glassTokens.accent,
                     modifier = Modifier.size(15.dp),

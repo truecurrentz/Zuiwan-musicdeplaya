@@ -355,7 +355,7 @@ private fun listenorb(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = if (processing) ZIcons.Sparkle else ZIcons.Mic,
+                    imageVector = if (processing) ZIcons.Sparkles else ZIcons.Mic,
                     contentDescription = "Recognize",
                     tint = if (listening || processing) glassTokens.onAccent else glassTokens.accent,
                     modifier = Modifier.size(46.dp),
