@@ -12,6 +12,7 @@ import zuiwan.model.ArtistRef
 import zuiwan.model.ArtistSummary
 import zuiwan.model.AudioSpec
 import zuiwan.model.LyricPayload
+import zuiwan.model.MatchResult
 import zuiwan.model.PlaylistSummary
 import zuiwan.model.Track
 import zuiwan.model.trackart
@@ -47,7 +48,7 @@ fun TrackEntity.totrack(): Track {
         entityJson.decodeFromString<List<ArtistRef>>(artistsJson)
     }.getOrDefault(emptyList())
     val repairedArt = upscaleart(artwork).ifBlank {
-        if (id.length in 8..16 && !id.startsWith("local_") && !id.startsWith("auto_")) {
+        if (id.length in 8..16 && !id.startsWith("local_") && !id.startsWith("auto_") && !id.startsWith("yt_")) {
             "https://i.ytimg.com/vi/$id/hqdefault.jpg"
         } else {
             ""
@@ -186,7 +187,47 @@ data class PlaylistTrackEntity(
     val trackId: String,
     val position: Int,
     val addedAt: Long = System.currentTimeMillis(),
+    val setVideoId: String? = null,
 )
+
+@Entity(tableName = "recognized")
+data class RecognizedEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val artist: String,
+    val album: String? = null,
+    val artwork: String = "",
+    val genre: String? = null,
+    val releaseDate: String? = null,
+    val videoId: String? = null,
+    val recognizedAt: Long = System.currentTimeMillis(),
+)
+
+fun RecognizedEntity.tomatch(): MatchResult =
+    MatchResult(
+        id = id,
+        title = title,
+        artist = artist,
+        album = album,
+        artwork = upscaleart(artwork),
+        genre = genre,
+        releaseDate = releaseDate,
+        videoId = videoId,
+        recognizedAt = recognizedAt,
+    )
+
+fun MatchResult.toentity(): RecognizedEntity =
+    RecognizedEntity(
+        id = id,
+        title = title,
+        artist = artist,
+        album = album,
+        artwork = upscaleart(artwork),
+        genre = genre,
+        releaseDate = releaseDate,
+        videoId = videoId ?: matchedTrack?.id,
+        recognizedAt = recognizedAt,
+    )
 
 @Entity(
     tableName = "play_events",

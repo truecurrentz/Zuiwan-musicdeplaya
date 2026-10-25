@@ -80,6 +80,7 @@ private enum class DiscoverPane(val label: String, val icon: ImageVector) {
 
 @Composable
 fun viewsearch(
+    initialQuery: String = "",
     onNavigate: (Route) -> Unit,
     onTrackMenu: (Track) -> Unit,
     bottomPadding: PaddingValues,
@@ -148,6 +149,14 @@ fun viewsearch(
         }
     }
 
+    LaunchedEffect(initialQuery) {
+        val clean = initialQuery.trim()
+        if (clean.isNotEmpty() && submitted != clean) {
+            query = clean
+            runsearch(clean)
+        }
+    }
+
     LaunchedEffect(query) {
         val clean = query.trim()
         if (clean.isEmpty() || clean == submitted) {
@@ -184,6 +193,10 @@ fun viewsearch(
         header = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 brandbar {
+                    iconbtn(
+                        icon = ZIcons.Mic,
+                        onClick = { onNavigate(Route.Recognize) },
+                    )
                     iconbtn(
                         icon = ZIcons.Settings,
                         onClick = { onNavigate(Route.Settings) },
@@ -242,6 +255,12 @@ fun viewsearch(
                                     iconSize = 15.dp,
                                 )
                             } else {
+                                iconbtn(
+                                    icon = ZIcons.Mic,
+                                    onClick = { onNavigate(Route.Recognize) },
+                                    size = 30.dp,
+                                    iconSize = 18.dp,
+                                )
                                 iconbtn(
                                     icon = ZIcons.Globe,
                                     onClick = { pane = DiscoverPane.EXPLORE },

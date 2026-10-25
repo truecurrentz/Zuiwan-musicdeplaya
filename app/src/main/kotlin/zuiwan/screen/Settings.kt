@@ -60,8 +60,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import zuiwan.model.NoticeKind
 import zuiwan.model.QualityMode
 import zuiwan.model.ThemeChoice
+import zuiwan.sheet.importsheet
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
 import zuiwan.ui.artimage
@@ -125,6 +127,7 @@ fun viewsettings(
 
     val settings by hub.settings.collectAsState()
     val session by hub.session.collectAsState()
+    val syncing by hub.sync.syncing.collectAsState()
     val eqProfile by hub.eq.collectAsState()
     val downloadedTracks by hub.downloadedTracks.collectAsState()
 
@@ -137,7 +140,7 @@ fun viewsettings(
     var showQualityDialog by remember { mutableStateOf(false) }
     var showCountryDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
-    var statusMsg by remember { mutableStateOf<String?>(null) }
+    var showImportSheet by remember { mutableStateOf(false) }
 
     val headerScroll = headerscroll()
 
@@ -150,9 +153,10 @@ fun viewsettings(
     ) { uri ->
         if (uri != null) {
             scope.launch {
+                hub.shownotice(NoticeKind.LOADING, "Creating Backup", "Archiving library & preferences", 0.45f)
                 hub.backup.exportbackup(uri)
-                    .onSuccess { statusMsg = "Backup saved successfully" }
-                    .onFailure { statusMsg = it.message ?: "Backup failed" }
+                    .onSuccess { hub.shownotice(NoticeKind.SUCCESS, "Backup Saved", "Archive exported successfully") }
+                    .onFailure { hub.shownotice(NoticeKind.ERROR, "Backup Failed", it.message ?: "Unable to save backup") }
             }
         }
     }
@@ -162,11 +166,22 @@ fun viewsettings(
     ) { uri ->
         if (uri != null) {
             scope.launch {
+                hub.shownotice(NoticeKind.LOADING, "Restoring Backup", "Unpacking Zuiwan database", 0.5f)
                 hub.backup.restorebackup(uri)
-                    .onSuccess { statusMsg = "Backup restored - restart Zuiwan to reload database" }
-                    .onFailure { statusMsg = it.message ?: "Restore failed" }
+                    .onSuccess { hub.shownotice(NoticeKind.SUCCESS, "Backup Restored", "Restart Zuiwan to reload database") }
+                    .onFailure { hub.shownotice(NoticeKind.ERROR, "Restore Failed", it.message ?: "Unable to restore archive") }
             }
         }
+    }
+
+    if (showImportSheet) {
+        importsheet(
+            hub = hub,
+            onDismiss = { showImportSheet = false },
+            onImported = { newId ->
+                onNavigate(Route.Playlist(newId, local = true))
+            },
+        )
     }
 
     if (showQualityDialog) {
@@ -306,34 +321,6 @@ fun viewsettings(
                 ),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                statusMsg?.let { msg ->
-                    item(key = "status_banner") {
-                        glass(
-                            shape = RoundedCornerShape(18.dp),
-                            accented = true,
-                            onClick = { statusMsg = null },
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 18.dp, vertical = 6.dp),
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(
-                                    text = msg,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = glassTokens.ink,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Icon(ZIcons.Close, null, tint = glassTokens.inkSecondary, modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    }
-                }
-
                 when (currentPage) {
                     SettingsPage.MAIN -> {
                         item(key = "account_hero") {
@@ -374,13 +361,10 @@ fun viewsettings(
                                         }
                                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                             pillbtn(
-                                                text = "Sync Library",
-                                                icon = ZIcons.Refresh,
+                                                text = if (syncing) "Syncing..." else "Sync Library",
+                                                icon = ZIcons.Sync,
                                                 primary = true,
-                                                onClick = {
-                                                    hub.syncaccount()
-                                                    statusMsg = "Syncing library from YouTube Music..."
-                                                },
+                                                onClick = { hub.syncaccount() },
                                                 modifier = Modifier.weight(1f),
                                             )
                                             pillbtn(
@@ -814,20 +798,27 @@ fun viewsettings(
                                     onClick = {
                                         hub.vault.clearcache()
                                         streamBytes = 0L
-                                        statusMsg = "Stream cache cleared"
+                                        hub.shownotice(NoticeKind.SUCCESS, "Stream Cache Cleared", "Temporary audio cache freed")
                                     },
                                 )
                             }
                         }
 
                         item(key = "backup_group") {
-                            grouptitle("Backup & Restore")
+                            grouptitle("Playlists & Backup")
                             groupbox {
+                                navitem(
+                                    icon = ZIcons.Import,
+                                    title = "Import Playlist",
+                                    subtitle = "Import CSV, M3U, JSON, TXT, or YouTube & Spotify links",
+                                    position = GroupPos.TOP,
+                                    onClick = { showImportSheet = true },
+                                )
                                 navitem(
                                     icon = ZIcons.Download,
                                     title = "Create Backup",
                                     subtitle = "Export playlists, likes, history & settings (.zip)",
-                                    position = GroupPos.TOP,
+                                    position = GroupPos.MIDDLE,
                                     onClick = { exportBackupLauncher.launch("zuiwan-backup.zip") },
                                 )
                                 navitem(

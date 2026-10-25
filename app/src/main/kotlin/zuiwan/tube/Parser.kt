@@ -184,9 +184,11 @@ object TubeParser {
 
                 pageType == "MUSIC_PAGE_TYPE_PLAYLIST" || browseId.startsWith("VL") -> {
                     val cleanId = browseId.removePrefix("VL")
+                    if (cleanId.isBlank() || cleanId.startsWith("FEmusic_")) return null
                     val author = col1Runs.extractartists().firstOrNull()?.name
                         ?: groups.getOrNull(1)?.joinToString("") { it.text }
                     val count = groups.lastOrNull()?.joinToString("") { it.text }
+                    val editable = canedit(renderer.patharr("menu", "menuRenderer", "items"))
                     FeedItem.PlaylistCard(
                         PlaylistSummary(
                             id = cleanId,
@@ -194,6 +196,8 @@ object TubeParser {
                             author = author,
                             countText = count,
                             artwork = thumb,
+                            remoteId = cleanId,
+                            editable = editable,
                         ),
                     )
                 }
@@ -284,6 +288,8 @@ object TubeParser {
 
                 else -> {
                     val cleanId = browseId.removePrefix("VL")
+                    if (cleanId.isBlank() || cleanId.startsWith("FEmusic_")) return null
+                    val editable = canedit(renderer.patharr("menu", "menuRenderer", "items"))
                     FeedItem.PlaylistCard(
                         PlaylistSummary(
                             id = cleanId,
@@ -291,6 +297,8 @@ object TubeParser {
                             author = groups.firstOrNull()?.joinToString("") { it.text },
                             countText = groups.getOrNull(1)?.joinToString("") { it.text },
                             artwork = thumb,
+                            remoteId = cleanId,
+                            editable = editable,
                         ),
                     )
                 }
@@ -866,13 +874,121 @@ object TubeParser {
         val header = root["actions"].arr()
             ?.firstOrNull().obj()
             .pathobj("openPopupAction", "popup", "multiPageMenuRenderer", "header", "activeAccountHeaderRenderer")
-            ?: return null
-        val name = header["accountName"].runtext().takeIf { it.isNotBlank() } ?: return null
-        val handle = header["channelHandle"].runtext()
-        val email = header["email"].runtext()
-        val avatar = upscaleart(header["accountPhoto"].lastthumb(), 256)
-        return AccountProfile(name = name, handle = handle, email = email, avatar = avatar)
+        if (header != null) {
+            val name = header["accountName"].runtext().takeIf { it.isNotBlank() } ?: return null
+            val handle = header["channelHandle"].runtext()
+            val email = header["email"].runtext()
+            val avatar = upscaleart(header["accountPhoto"].lastthumb(), 256)
+            return AccountProfile(name = name, handle = handle, email = email, avatar = avatar)
+        }
+        val sections = root.patharr("contents")
+        val selected = sections.orEmpty().firstNotNullOfOrNull { secEl ->
+            secEl.obj().patharr("accountSectionListRenderer", "contents").orEmpty().firstNotNullOfOrNull { itemSec ->
+                itemSec.obj().patharr("accountItemSectionRenderer", "contents").orEmpty().firstNotNullOfOrNull { accEl ->
+                    val item = accEl.obj()?.get("accountItem").obj()
+                    item?.takeIf { it["isSelected"].flag() == true } ?: item
+                }
+            }
+        } ?: return null
+        val name = selected["accountName"].runtext().takeIf { it.isNotBlank() } ?: return null
+        val handle = selected["channelHandle"].runtext()
+        val avatar = upscaleart(selected["accountPhoto"].lastthumb(), 256)
+        return AccountProfile(name = name, handle = handle, email = "", avatar = avatar)
     }
+
+    fun parselibrary(root: JsonObject): Pair<List<FeedItem>, String?> {
+        val items = mutableListOf<FeedItem>()
+        var cont: String? = null
+
+        fun takeentry(entry: JsonObject) {
+            entry["musicTwoRowItemRenderer"].obj()?.let { parsetile(it)?.let(items::add) }
+            entry["musicResponsiveListItemRenderer"].obj()?.let { parseresponsive(it)?.let(items::add) }
+        }
+
+        fun takesection(sec: JsonObject) {
+            sec["gridRenderer"].obj()?.let { grid ->
+                grid["items"].arr().orEmpty().forEach { it.obj()?.let(::takeentry) }
+                if (cont == null) cont = grid.findcontinuation() ?: grid["items"].arr().findcontinuation()
+            }
+            sec["musicShelfRenderer"].obj()?.let { shelf ->
+                shelf["contents"].arr().orEmpty().forEach { it.obj()?.let(::takeentry) }
+                if (cont == null) cont = shelf.findcontinuation() ?: shelf["contents"].arr().findcontinuation()
+            }
+            sec["musicPlaylistShelfRenderer"].obj()?.let { shelf ->
+                shelf["contents"].arr().orEmpty().forEach { it.obj()?.let(::takeentry) }
+                if (cont == null) cont = shelf.findcontinuation() ?: shelf["contents"].arr().findcontinuation()
+            }
+            sec["musicCarouselShelfRenderer"].obj()?.let { shelf ->
+                shelf["contents"].arr().orEmpty().forEach { it.obj()?.let(::takeentry) }
+            }
+            sec["itemSectionRenderer"].obj()?.let { wrap ->
+                wrap["contents"].arr().orEmpty().forEach { it.obj()?.let(::takesection) }
+                if (cont == null) cont = wrap.findcontinuation()
+            }
+            takeentry(sec)
+        }
+
+        root.pathobj("continuationContents", "gridContinuation")?.let { grid ->
+            grid["items"].arr().orEmpty().forEach { it.obj()?.let(::takeentry) }
+            val next = grid.findcontinuation() ?: grid["items"].arr().findcontinuation()
+            return items.distinctBy { it.key } to next
+        }
+        root.pathobj("continuationContents", "musicShelfContinuation")?.let { shelf ->
+            shelf["contents"].arr().orEmpty().forEach { it.obj()?.let(::takeentry) }
+            val next = shelf.findcontinuation() ?: shelf["contents"].arr().findcontinuation()
+            return items.distinctBy { it.key } to next
+        }
+        root.pathobj("continuationContents", "musicPlaylistShelfContinuation")?.let { shelf ->
+            shelf["contents"].arr().orEmpty().forEach { it.obj()?.let(::takeentry) }
+            val next = shelf.findcontinuation() ?: shelf["contents"].arr().findcontinuation()
+            return items.distinctBy { it.key } to next
+        }
+        root.pathobj("continuationContents", "sectionListContinuation")?.let { secList ->
+            secList["contents"].arr().orEmpty().forEach { it.obj()?.let(::takesection) }
+            val next = cont ?: secList.findcontinuation()
+            return items.distinctBy { it.key } to next
+        }
+        root["onResponseReceivedActions"].arr()
+            ?.firstOrNull().obj()
+            .patharr("appendContinuationItemsAction", "continuationItems")
+            ?.let { raw ->
+                raw.forEach { it.obj()?.let(::takesection) }
+                val next = cont ?: raw.findcontinuation()
+                return items.distinctBy { it.key } to next
+            }
+
+        val singleTabs = root.patharr("contents", "singleColumnBrowseResultsRenderer", "tabs").orEmpty()
+        singleTabs.forEach { tab ->
+            val secList = tab.obj().pathobj("tabRenderer", "content", "sectionListRenderer")
+            secList?.get("contents").arr().orEmpty().forEach { it.obj()?.let(::takesection) }
+            if (cont == null) cont = secList.findcontinuation()
+        }
+
+        val twoColTabs = root.patharr("contents", "twoColumnBrowseResultsRenderer", "tabs").orEmpty()
+        twoColTabs.forEach { tab ->
+            val secList = tab.obj().pathobj("tabRenderer", "content", "sectionListRenderer")
+            secList?.get("contents").arr().orEmpty().forEach { it.obj()?.let(::takesection) }
+            if (cont == null) cont = secList.findcontinuation()
+        }
+
+        val twoColSecondary = root.pathobj("contents", "twoColumnBrowseResultsRenderer", "secondaryContents", "sectionListRenderer")
+        twoColSecondary?.get("contents").arr().orEmpty().forEach { it.obj()?.let(::takesection) }
+        if (cont == null) cont = twoColSecondary.findcontinuation()
+
+        return items.distinctBy { it.key } to cont
+    }
+
+    private fun canedit(menuItems: JsonArray?): Boolean =
+        menuItems.orEmpty().any { itemEl ->
+            val o = itemEl.obj() ?: return@any false
+            val svc = o["menuServiceItemRenderer"].obj()
+            val nav = o["menuNavigationItemRenderer"].obj()
+            val icon = svc.pathstr("icon", "iconType") ?: nav.pathstr("icon", "iconType")
+            svc?.get("serviceEndpoint")?.obj()?.containsKey("deletePlaylistEndpoint") == true ||
+                nav?.get("navigationEndpoint")?.obj()?.containsKey("confirmDialogEndpoint") == true && icon == "DELETE" ||
+                icon == "EDIT" ||
+                icon == "DELETE"
+        }
 
     private fun extracttokens(menuItems: JsonArray?): Pair<String?, String?> {
         var add: String? = null

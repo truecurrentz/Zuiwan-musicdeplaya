@@ -48,18 +48,18 @@
 
 #### Lyrics & Discovery
 - Word-by-word & line-synced live lyrics (BetterLyrics, LrcLib, KuGou, YouTube Music)
-- Automatic CJK & Cyrillic romanization
-- Synced & plain lyric modes with tap-to-seek
+- Built-in **Recognize Music** acoustic fingerprinting with live soundwave orb & recognition history
+- Automatic CJK & Cyrillic romanization with tap-to-seek
 - Quick Picks, Keep Listening, Explore, Unique Songs, Moods & Charts
 
 </td>
     <td width="50%" valign="top">
 
 #### Frosted Glass UI & Library
-- iOS-inspired Frosted Glass interface with **Dark** and **White** themes
+- iOS-inspired Frosted Glass interface with **Dark** and **White** themes & animated Dynamic Island live notifications
 - Real-time GPU backdrop blur on connected floating bars and immersive full-bleed player
-- Pure geometric vector icon suite across every screen and sheet
-- Local playlists, `.m3u` import/export, YouTube Music cloud sync & `.zip` backup/restore
+- Full **YouTube Music Sync** (liked songs, playlists, albums, artists & synced playlist creation)
+- Universal **Playlist Import & Export** (`.csv`, `.m3u`/`.m3u8`, `.json`, `.pls`, `.xspf`, `.txt`, YouTube & Spotify links) + `.zip` backup/restore
 
 </td>
   </tr>

@@ -50,6 +50,7 @@ import zuiwan.screen.viewlibrary
 import zuiwan.screen.viewlogin
 import zuiwan.screen.viewplayer
 import zuiwan.screen.viewplaylist
+import zuiwan.screen.viewrecognize
 import zuiwan.screen.viewsearch
 import zuiwan.screen.viewsettings
 import zuiwan.screen.viewstats
@@ -62,6 +63,7 @@ import zuiwan.theme.LocalHaze
 import zuiwan.theme.apptheme
 import zuiwan.ui.backdrop
 import zuiwan.ui.floatingbar
+import zuiwan.ui.liveisland
 import zuiwan.ui.miniplayer
 import zuiwan.ui.NavStack
 import zuiwan.ui.Route
@@ -104,6 +106,7 @@ private fun rootview(
     val settings by hub.settings.collectAsState()
     val playback by hub.pilot.state.collectAsState()
     val likedIds by hub.likedIds.collectAsState()
+    val notice by hub.notice.collectAsState()
 
     val nav = remember { NavStack() }
     val stateHolder = rememberSaveableStateHolder()
@@ -192,10 +195,20 @@ private fun rootview(
                                     onTrackMenu = { menuTrack = it },
                                     bottomPadding = contentBottom,
                                 )
-                                Route.Search -> viewsearch(
+                                is Route.Search -> viewsearch(
+                                    initialQuery = route.initialQuery,
                                     onNavigate = nav::open,
                                     onTrackMenu = { menuTrack = it },
                                     bottomPadding = contentBottom,
+                                )
+                                Route.Recognize -> viewrecognize(
+                                    bottomPadding = contentBottom,
+                                    onBack = { nav.pop() },
+                                    onOpenSearch = { q ->
+                                        nav.pop()
+                                        nav.open(Route.Search(q))
+                                    },
+                                    onTrackMenu = { menuTrack = it },
                                 )
                                 Route.Library -> viewlibrary(
                                     onNavigate = nav::open,
@@ -326,6 +339,12 @@ private fun rootview(
                         onDismiss = { infoTrack = null },
                     )
                 }
+
+                liveisland(
+                    notice = notice,
+                    onDismiss = { hub.hidenotice() },
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
             }
         }
     }

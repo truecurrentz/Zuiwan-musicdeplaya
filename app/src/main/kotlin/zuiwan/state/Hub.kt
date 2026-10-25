@@ -6,7 +6,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zuiwan.audio.AudioPilot
 import zuiwan.audio.AudioVault
+import zuiwan.audio.MusicRecognizer
 import zuiwan.data.AppSettings
 import zuiwan.data.BackupManager
 import zuiwan.data.MusicDao
@@ -28,6 +31,7 @@ import zuiwan.data.PlaylistTrackEntity
 import zuiwan.data.PrefStore
 import zuiwan.data.SearchHistoryEntity
 import zuiwan.data.toentity
+import zuiwan.data.tomatch
 import zuiwan.data.tosummary
 import zuiwan.data.totrack
 import zuiwan.dsp.EqualizerProcessor
@@ -40,7 +44,10 @@ import zuiwan.model.ArtistSummary
 import zuiwan.model.EqProfile
 import zuiwan.model.ExploreFeed
 import zuiwan.model.HomeFeed
+import zuiwan.model.MatchResult
 import zuiwan.model.MoodChip
+import zuiwan.model.NoticeKind
+import zuiwan.model.NoticeState
 import zuiwan.model.PlaylistDetail
 import zuiwan.model.PlaylistSummary
 import zuiwan.model.SessionData
@@ -50,6 +57,10 @@ import zuiwan.model.Track
 import zuiwan.model.TrackStat
 import zuiwan.model.trackart
 import zuiwan.model.upscaleart
+import zuiwan.tube.CloudSync
+import zuiwan.tube.DraftSong
+import zuiwan.tube.ExportKind
+import zuiwan.tube.PlaylistTransfer
 import zuiwan.tube.StreamEngine
 import zuiwan.tube.TubeClient
 import java.util.UUID
@@ -66,8 +77,15 @@ class Hub(val appContext: Context) {
     val backup: BackupManager = BackupManager(appContext, db)
 
     val tube: TubeClient = TubeClient()
+    val sync: CloudSync = CloudSync(dao, tube)
+    val transfer: PlaylistTransfer = PlaylistTransfer(appContext, dao, tube, sync)
+    val recognizer: MusicRecognizer = MusicRecognizer(appContext, dao, tube)
     val streams: StreamEngine = StreamEngine(appContext) { tube.innerTube }
     val lyrics: LyricsExtractor = LyricsExtractor(dao, tube)
+
+    private val noticeFlow = MutableStateFlow(NoticeState())
+    val notice: StateFlow<NoticeState> = noticeFlow.asStateFlow()
+    private var noticeHideJob: Job? = null
 
     val normalizer: NormalizerProcessor = NormalizerProcessor()
     val equalizer: EqualizerProcessor = EqualizerProcessor()
@@ -177,6 +195,10 @@ class Hub(val appContext: Context) {
 
     val searchHistory: StateFlow<List<String>> = dao.recentsearches()
         .map { rows -> rows.map { it.query } }
+        .stateIn(scope, SharingStarted.Lazily, emptyList())
+
+    val recognizedHistory: StateFlow<List<MatchResult>> = dao.recognizedlist()
+        .map { rows -> rows.map { it.tomatch() } }
         .stateIn(scope, SharingStarted.Lazily, emptyList())
 
     private val homeFeedFlow = MutableStateFlow(HomeFeed())
@@ -292,30 +314,67 @@ class Hub(val appContext: Context) {
 
     fun saveplaylist(playlist: PlaylistSummary) {
         scope.launch {
-            val existing = dao.getplaylist(playlist.id)
+            val cleanRemote = (playlist.remoteId ?: playlist.id).removePrefix("VL").removePrefix("yt_")
+            val existing = dao.getplaylist(playlist.id) ?: dao.getremoteplaylist(cleanRemote)
             if (existing != null) {
-                dao.unlinkall(playlist.id)
-                dao.deleteplaylist(playlist.id)
+                dao.unlinkall(existing.id)
+                dao.deleteplaylist(existing.id)
+                if (!existing.local && !existing.remoteId.isNullOrBlank()) {
+                    tube.likelist(existing.remoteId, false)
+                }
+                shownotice(NoticeKind.INFO, "Removed from Library", playlist.title)
             } else {
+                val localId = "yt_$cleanRemote"
                 dao.putplaylist(
                     PlaylistEntity(
-                        id = playlist.id,
+                        id = localId,
                         title = playlist.title,
                         author = playlist.author ?: "YouTube Music",
                         artwork = upscaleart(playlist.artwork),
                         local = false,
-                        remoteId = playlist.id,
-                        editable = false,
+                        remoteId = cleanRemote,
+                        editable = playlist.editable,
                     ),
                 )
+                tube.likelist(cleanRemote, true)
+                runCatching { sync.syncone(localId) }
+                shownotice(NoticeKind.SUCCESS, "Saved to Library", playlist.title)
             }
         }
     }
 
-    fun createplaylist(title: String, onCreated: (String) -> Unit = {}) {
+    fun createplaylist(
+        title: String,
+        syncYoutube: Boolean = false,
+        onCreated: (String) -> Unit = {},
+    ) {
         val clean = title.trim()
         if (clean.isEmpty()) return
         scope.launch {
+            if (syncYoutube && tube.isauthed()) {
+                shownotice(NoticeKind.SYNC, "Creating Playlist", "Syncing $clean with YouTube Music", 0.25f)
+                val remoteRes = tube.createremote(clean)
+                val remoteId = remoteRes.getOrNull()
+                if (!remoteId.isNullOrBlank()) {
+                    val id = "yt_$remoteId"
+                    val author = session.value.accountName.ifBlank { "YouTube Music" }
+                    dao.putplaylist(
+                        PlaylistEntity(
+                            id = id,
+                            title = clean,
+                            author = author,
+                            artwork = "",
+                            local = false,
+                            remoteId = remoteId,
+                            editable = true,
+                        ),
+                    )
+                    shownotice(NoticeKind.SUCCESS, "Playlist Created", "$clean synced with YouTube Music")
+                    withContext(Dispatchers.Main) { onCreated(id) }
+                    return@launch
+                }
+            }
+
             val id = "local_${UUID.randomUUID().toString().take(8)}"
             dao.putplaylist(
                 PlaylistEntity(
@@ -327,6 +386,11 @@ class Hub(val appContext: Context) {
                     editable = true,
                 ),
             )
+            shownotice(
+                kind = if (syncYoutube) NoticeKind.INFO else NoticeKind.SUCCESS,
+                title = "Playlist Created",
+                subtitle = if (syncYoutube) "$clean saved locally" else clean,
+            )
             withContext(Dispatchers.Main) { onCreated(id) }
         }
     }
@@ -337,13 +401,26 @@ class Hub(val appContext: Context) {
         scope.launch {
             val cur = dao.getplaylist(id) ?: return@launch
             dao.putplaylist(cur.copy(title = clean))
+            if (!cur.remoteId.isNullOrBlank() && cur.editable) {
+                tube.renameremote(cur.remoteId, clean)
+            }
+            shownotice(NoticeKind.SUCCESS, "Playlist Renamed", clean)
         }
     }
 
     fun deleteplaylist(id: String) {
         scope.launch {
+            val cur = dao.getplaylist(id)
             dao.unlinkall(id)
             dao.deleteplaylist(id)
+            if (cur != null && !cur.remoteId.isNullOrBlank()) {
+                if (cur.editable) {
+                    tube.deleteremote(cur.remoteId)
+                } else {
+                    tube.likelist(cur.remoteId, false)
+                }
+            }
+            shownotice(NoticeKind.INFO, "Playlist Deleted", cur?.title.orEmpty())
         }
     }
 
@@ -365,17 +442,28 @@ class Hub(val appContext: Context) {
             if (pl != null && pl.artwork.isBlank() && art.isNotBlank()) {
                 dao.putplaylist(pl.copy(artwork = art))
             }
+            shownotice(NoticeKind.SUCCESS, "Added to ${pl?.title ?: "Playlist"}", track.title)
+            if (pl != null && !pl.remoteId.isNullOrBlank() && pl.editable && tube.isauthed()) {
+                tube.addremote(pl.remoteId, track.id)
+                runCatching { sync.syncone(pl.id) }
+            }
         }
     }
 
     fun droptrack(playlistId: String, trackId: String) {
         scope.launch {
+            val pl = dao.getplaylist(playlistId)
+            val setVid = dao.getsetvideo(playlistId, trackId)
             dao.unlinktrack(playlistId, trackId)
+            if (pl != null && !pl.remoteId.isNullOrBlank() && pl.editable && !setVid.isNullOrBlank()) {
+                tube.removeremote(pl.remoteId, trackId, setVid)
+            }
         }
     }
 
     fun reorderplaylist(playlistId: String, orderedTrackIds: List<String>) {
         scope.launch {
+            val oldLinks = dao.playlistlinks(playlistId).associateBy { it.trackId }
             dao.unlinkall(playlistId)
             orderedTrackIds.forEachIndexed { idx, trackId ->
                 dao.linktrack(
@@ -383,6 +471,7 @@ class Hub(val appContext: Context) {
                         playlistId = playlistId,
                         trackId = trackId,
                         position = idx,
+                        setVideoId = oldLinks[trackId]?.setVideoId,
                     ),
                 )
             }
@@ -391,8 +480,13 @@ class Hub(val appContext: Context) {
 
     suspend fun localplaylist(playlistId: String): PlaylistDetail? =
         withContext(Dispatchers.IO) {
-            val entity = dao.getplaylist(playlistId) ?: return@withContext null
-            val tracks = dao.playlisttracks(playlistId).map { it.totrack() }
+            val entity = dao.getplaylist(playlistId)
+                ?: dao.getremoteplaylist(playlistId.removePrefix("VL").removePrefix("yt_"))
+                ?: return@withContext null
+            val links = dao.playlistlinks(entity.id).associateBy { it.trackId }
+            val tracks = dao.playlisttracks(entity.id).map { row ->
+                row.totrack().copy(setVideoId = links[row.id]?.setVideoId)
+            }
             val thumbs = tracks.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4)
             PlaylistDetail(
                 playlist = entity.tosummary(tracks.size).copy(
@@ -404,77 +498,119 @@ class Hub(val appContext: Context) {
             )
         }
 
+    fun syncplaylist(playlistId: String, onFinished: () -> Unit = {}) {
+        scope.launch {
+            if (!tube.isauthed()) {
+                shownotice(NoticeKind.ERROR, "YouTube Music Sync", "Sign in to YouTube Music first")
+                return@launch
+            }
+            val pl = dao.getplaylist(playlistId)
+            if (pl != null && pl.remoteId.isNullOrBlank()) {
+                shownotice(NoticeKind.SYNC, "Syncing to YouTube Music", pl.title, 0.08f)
+                sync.pushlocal(playlistId) { step, prog ->
+                    updatenotice(NoticeKind.SYNC, "Syncing ${pl.title}", step, prog)
+                }.onSuccess {
+                    shownotice(NoticeKind.SUCCESS, "Synced to YouTube Music", pl.title)
+                    withContext(Dispatchers.Main) { onFinished() }
+                }.onFailure { err ->
+                    shownotice(NoticeKind.ERROR, "Playlist Sync Failed", err.message ?: "Unable to sync playlist")
+                }
+            } else {
+                val label = pl?.title ?: "Playlist"
+                shownotice(NoticeKind.SYNC, "Syncing $label", "Fetching tracks from YouTube Music", 0.35f)
+                sync.syncone(playlistId).onSuccess { count ->
+                    shownotice(NoticeKind.SUCCESS, "Playlist Synced", "$count songs in $label")
+                    withContext(Dispatchers.Main) { onFinished() }
+                }.onFailure { err ->
+                    shownotice(NoticeKind.ERROR, "Playlist Sync Failed", err.message ?: "Unable to refresh playlist")
+                }
+            }
+        }
+    }
+
+    fun startimport(
+        title: String,
+        songs: List<DraftSong>,
+        syncYoutube: Boolean,
+        targetPlaylistId: String? = null,
+        onCreated: (String) -> Unit = {},
+    ) {
+        scope.launch {
+            shownotice(NoticeKind.LOADING, "Importing Playlist", "Preparing ${songs.size} songs", 0.04f)
+            transfer.runimport(
+                title = title,
+                songs = songs,
+                syncYoutube = syncYoutube,
+                targetPlaylistId = targetPlaylistId,
+                onStep = { t, sub, prog ->
+                    val kind = if (t.startsWith("Syncing")) NoticeKind.SYNC else NoticeKind.LOADING
+                    updatenotice(kind, t, sub, prog)
+                },
+            ).onSuccess { newId ->
+                shownotice(NoticeKind.SUCCESS, "Playlist Imported", title)
+                withContext(Dispatchers.Main) { onCreated(newId) }
+            }.onFailure { err ->
+                shownotice(NoticeKind.ERROR, "Import Failed", err.message ?: "Unable to import playlist")
+            }
+        }
+    }
+
+    fun exporturi(uri: Uri, title: String, tracks: List<Track>, kind: ExportKind) {
+        scope.launch {
+            shownotice(NoticeKind.LOADING, "Exporting Playlist", "${tracks.size} songs · ${kind.label}", 0.5f)
+            transfer.writedoc(uri, title, tracks, kind)
+                .onSuccess { count ->
+                    shownotice(NoticeKind.SUCCESS, "Playlist Exported", "$count songs saved as ${kind.label}")
+                }
+                .onFailure { err ->
+                    shownotice(NoticeKind.ERROR, "Export Failed", err.message ?: "Unable to save playlist")
+                }
+        }
+    }
+
+    fun exportsave(title: String, tracks: List<Track>, kind: ExportKind) {
+        scope.launch {
+            shownotice(NoticeKind.LOADING, "Saving Playlist", "${tracks.size} songs · ${kind.label}", 0.5f)
+            transfer.savedocs(title, tracks, kind)
+                .onSuccess { path ->
+                    shownotice(NoticeKind.SUCCESS, "Saved to Documents", path)
+                }
+                .onFailure { err ->
+                    shownotice(NoticeKind.ERROR, "Export Failed", err.message ?: "Unable to save playlist")
+                }
+        }
+    }
+
+    fun exportshare(title: String, tracks: List<Track>, kind: ExportKind) {
+        scope.launch {
+            transfer.sharefile(title, tracks, kind)
+                .onFailure { err ->
+                    shownotice(NoticeKind.ERROR, "Share Failed", err.message ?: "Unable to share playlist")
+                }
+        }
+    }
+
     fun exportlist(playlistId: String, uri: Uri) {
         scope.launch {
             val detail = localplaylist(playlistId) ?: return@launch
-            val body = buildString {
-                appendLine("#EXTM3U")
-                appendLine("#PLAYLIST:${detail.playlist.title}")
-                detail.tracks.forEach { t ->
-                    val artist = t.artists.joinToString(", ") { it.name }
-                    appendLine("#EXTINF:${t.duration},$artist - ${t.title}")
-                    appendLine("https://music.youtube.com/watch?v=${t.id}")
-                }
-            }
-            appContext.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
-                it.write(body)
-            }
+            exporturi(uri, detail.playlist.title, detail.tracks, ExportKind.M3U)
         }
     }
 
     fun importlist(uri: Uri) {
         scope.launch {
-            val lines = appContext.contentResolver.openInputStream(uri)
-                ?.bufferedReader()
-                ?.readLines()
-                .orEmpty()
-            if (lines.isEmpty()) return@launch
-            val title = lines.firstOrNull { it.startsWith("#PLAYLIST:") }
-                ?.removePrefix("#PLAYLIST:")
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?: "Imported Playlist"
-            val id = "local_${UUID.randomUUID().toString().take(8)}"
-            dao.putplaylist(
-                PlaylistEntity(
-                    id = id,
-                    title = title,
-                    author = "Imported",
-                    artwork = "",
-                    local = true,
-                    editable = true,
-                ),
-            )
-            var pendingMeta: Pair<String, String>? = null
-            var pos = 0
-            for (line in lines) {
-                val trimmed = line.trim()
-                if (trimmed.startsWith("#EXTINF:")) {
-                    val info = trimmed.substringAfter(",", "")
-                    val artist = info.substringBefore(" - ", "").trim()
-                    val songTitle = info.substringAfter(" - ", info).trim()
-                    pendingMeta = artist to songTitle
-                } else if (trimmed.contains("watch?v=") || trimmed.contains("youtu.be/")) {
-                    val videoId = when {
-                        trimmed.contains("watch?v=") -> trimmed.substringAfter("watch?v=").substringBefore("&")
-                        else -> trimmed.substringAfter("youtu.be/").substringBefore("?")
-                    }.trim()
-                    if (videoId.isNotBlank()) {
-                        val existing = dao.gettrack(videoId)?.totrack()
-                        val resolved = existing ?: Track(
-                            id = videoId,
-                            title = pendingMeta?.second?.ifBlank { videoId } ?: videoId,
-                            artists = pendingMeta?.first?.takeIf { it.isNotBlank() }
-                                ?.let { listOf(ArtistRef(null, it)) }
-                                .orEmpty(),
-                            artwork = "https://i.ytimg.com/vi/$videoId/hqdefault.jpg",
-                        )
-                        dao.puttrack(resolved.toentity())
-                        dao.linktrack(PlaylistTrackEntity(id, videoId, pos++))
-                    }
-                    pendingMeta = null
+            shownotice(NoticeKind.LOADING, "Reading Playlist", "Analyzing file format", 0.05f)
+            transfer.inspecturi(uri)
+                .onSuccess { bundle ->
+                    startimport(
+                        title = bundle.title,
+                        songs = bundle.songs,
+                        syncYoutube = false,
+                    )
                 }
-            }
+                .onFailure { err ->
+                    shownotice(NoticeKind.ERROR, "Import Failed", err.message ?: "Unsupported playlist file")
+                }
         }
     }
 
@@ -548,13 +684,80 @@ class Hub(val appContext: Context) {
         scope.launch {
             dao.clearhistory()
             dao.clearevents()
+            shownotice(NoticeKind.INFO, "History Cleared")
         }
+    }
+
+    fun dropmatch(id: String) {
+        scope.launch { dao.deleterecognized(id) }
+    }
+
+    fun clearmatches() {
+        scope.launch {
+            dao.clearrecognized()
+            shownotice(NoticeKind.INFO, "Recognition History Cleared")
+        }
+    }
+
+    fun shownotice(
+        kind: NoticeKind,
+        title: String,
+        subtitle: String = "",
+        progress: Float? = null,
+    ) {
+        noticeHideJob?.cancel()
+        val id = System.nanoTime()
+        noticeFlow.value = NoticeState(
+            id = id,
+            kind = kind,
+            title = title,
+            subtitle = subtitle,
+            progress = progress,
+            visible = true,
+        )
+        if (kind != NoticeKind.SYNC && kind != NoticeKind.LOADING) {
+            noticeHideJob = scope.launch {
+                delay(3_300L)
+                if (noticeFlow.value.id == id) {
+                    noticeFlow.value = noticeFlow.value.copy(visible = false)
+                }
+            }
+        }
+    }
+
+    fun updatenotice(
+        kind: NoticeKind,
+        title: String,
+        subtitle: String = "",
+        progress: Float? = null,
+    ) {
+        noticeHideJob?.cancel()
+        val currentId = noticeFlow.value.id.takeIf { it != 0L && noticeFlow.value.visible } ?: System.nanoTime()
+        noticeFlow.value = NoticeState(
+            id = currentId,
+            kind = kind,
+            title = title,
+            subtitle = subtitle,
+            progress = progress,
+            visible = true,
+        )
+    }
+
+    fun hidenotice() {
+        noticeHideJob?.cancel()
+        noticeFlow.value = noticeFlow.value.copy(visible = false)
     }
 
     fun savesession(next: SessionData) {
         scope.launch {
-            store.updatesession { next }
-            tube.applysession(next)
+            val clean = next.copy(
+                dataSyncId = next.dataSyncId.substringBefore("||"),
+                authUser = next.authUser.ifBlank { "0" },
+            )
+            store.updatesession { clean }
+            tube.applysession(clean)
+            tube.ensurevisitor()
+            shownotice(NoticeKind.SYNC, "YouTube Music Connected", "Loading your profile", 0.04f)
             val profile = tube.fetchaccount().getOrNull()
             if (profile != null) {
                 store.updatesession { cur ->
@@ -566,22 +769,51 @@ class Hub(val appContext: Context) {
                     )
                 }
             }
+            refreshhome(selectedChipFlow.value)
             syncaccount()
         }
     }
 
     fun syncaccount() {
         scope.launch {
-            tube.synclibrary().onSuccess { remoteLiked ->
-                val now = System.currentTimeMillis()
-                remoteLiked.forEachIndexed { idx, t ->
-                    val existing = dao.gettrack(t.id)
-                    if (existing == null) {
-                        dao.puttrack(t.copy(liked = true).toentity().copy(likedAt = now - idx))
-                    } else if (!existing.liked) {
-                        dao.setliked(t.id, true, now - idx)
+            if (!tube.isauthed()) {
+                shownotice(NoticeKind.ERROR, "YouTube Music Sync", "Sign in to YouTube Music first")
+                return@launch
+            }
+            if (sync.syncing.value) return@launch
+            shownotice(NoticeKind.SYNC, "Syncing YouTube Music", "Connecting to your library", 0.05f)
+            if (session.value.accountName.isBlank()) {
+                tube.fetchaccount().getOrNull()?.let { profile ->
+                    store.updatesession { cur ->
+                        cur.copy(
+                            accountName = profile.name,
+                            accountHandle = profile.handle,
+                            accountEmail = profile.email,
+                            accountAvatar = profile.avatar,
+                        )
                     }
                 }
+            }
+            sync.syncall { title, sub, prog ->
+                updatenotice(NoticeKind.SYNC, title, sub, prog)
+            }.onSuccess { report ->
+                val summary = buildList {
+                    add("${report.likedCount} songs")
+                    add("${report.playlistCount} playlists")
+                    if (report.albumCount > 0) add("${report.albumCount} albums")
+                    if (report.artistCount > 0) add("${report.artistCount} artists")
+                }.joinToString(" · ")
+                shownotice(
+                    kind = NoticeKind.SUCCESS,
+                    title = "YouTube Music Synced",
+                    subtitle = summary,
+                )
+            }.onFailure { err ->
+                shownotice(
+                    kind = NoticeKind.ERROR,
+                    title = "Sync Interrupted",
+                    subtitle = err.message ?: "Unable to sync YouTube Music",
+                )
             }
         }
     }
@@ -589,6 +821,8 @@ class Hub(val appContext: Context) {
     fun logout() {
         scope.launch {
             store.updatesession { SessionData() }
+            tube.applysession(SessionData())
+            shownotice(NoticeKind.INFO, "Signed Out", "YouTube Music disconnected")
         }
     }
 }

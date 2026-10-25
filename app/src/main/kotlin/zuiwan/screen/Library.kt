@@ -76,6 +76,14 @@ import zuiwan.model.Track
 import zuiwan.model.artistline
 import zuiwan.model.fallbackart
 import zuiwan.model.trackart
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.rotate
+import zuiwan.sheet.createsheet
+import zuiwan.sheet.importsheet
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
 import zuiwan.ui.artimage
@@ -165,6 +173,8 @@ fun viewlibrary(
     val albums by hub.savedAlbums.collectAsState()
     val artists by hub.savedArtists.collectAsState()
     val playback by hub.pilot.state.collectAsState()
+    val session by hub.session.collectAsState()
+    val syncing by hub.sync.syncing.collectAsState()
 
     var filter by rememberSaveable { mutableStateOf(LibFilter.LIBRARY) }
     var songScope by rememberSaveable { mutableStateOf(SongScope.LIKED) }
@@ -175,17 +185,11 @@ fun viewlibrary(
     var query by rememberSaveable { mutableStateOf("") }
 
     var showCreate by remember { mutableStateOf(false) }
-    var draftName by remember { mutableStateOf("") }
+    var showImport by remember { mutableStateOf(false) }
 
     val headerScroll = headerscroll()
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
-
-    val importM3uLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-    ) { uri ->
-        if (uri != null) hub.importlist(uri)
-    }
 
     BackHandler(enabled = searchOpen || filter != LibFilter.LIBRARY) {
         if (searchOpen) {
@@ -381,69 +385,50 @@ fun viewlibrary(
     }
 
     if (showCreate) {
-        AlertDialog(
-            onDismissRequest = { showCreate = false },
-            containerColor = glassTokens.glassStrong,
-            titleContentColor = glassTokens.ink,
-            textContentColor = glassTokens.ink,
-            title = { Text("New Playlist") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = draftName,
-                        onValueChange = { draftName = it },
-                        placeholder = { Text("Playlist name") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(glassTokens.glassElevated)
-                            .clickable {
-                                showCreate = false
-                                importM3uLauncher.launch("*/*")
-                            }
-                            .padding(horizontal = 12.dp, vertical = 9.dp),
-                    ) {
-                        Icon(ZIcons.Playlist, null, tint = glassTokens.accent, modifier = Modifier.size(17.dp))
-                        Text("Import .m3u playlist file", style = MaterialTheme.typography.labelLarge, color = glassTokens.ink)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (draftName.isNotBlank()) {
-                            hub.createplaylist(draftName) { newId ->
-                                showCreate = false
-                                draftName = ""
-                                onNavigate(Route.Playlist(newId, local = true))
-                            }
-                        }
-                    },
-                ) {
-                    Text("Create", color = glassTokens.accent)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCreate = false }) {
-                    Text("Cancel", color = glassTokens.inkSecondary)
-                }
+        createsheet(
+            hub = hub,
+            onDismiss = { showCreate = false },
+            onOpenImport = { showImport = true },
+            onCreated = { newId ->
+                onNavigate(Route.Playlist(newId, local = true))
             },
         )
     }
+
+    if (showImport) {
+        importsheet(
+            hub = hub,
+            onDismiss = { showImport = false },
+            onImported = { newId ->
+                onNavigate(Route.Playlist(newId, local = true))
+            },
+        )
+    }
+
+    val spinAnim = rememberInfiniteTransition(label = "libsync")
+    val syncSpin by spinAnim.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing)),
+        label = "deg",
+    )
 
     scrollhost(
         scroll = headerScroll,
         lifted = lifted,
         header = {
             brandbar {
+                if (session.active) {
+                    iconbtn(
+                        icon = ZIcons.Sync,
+                        active = syncing,
+                        onClick = { hub.syncaccount() },
+                        modifier = if (syncing) Modifier.rotate(syncSpin) else Modifier,
+                    )
+                }
                 iconbtn(
-                    icon = ZIcons.Equalizer,
-                    onClick = { onNavigate(Route.Equalizer) },
+                    icon = ZIcons.Import,
+                    onClick = { showImport = true },
                 )
                 iconbtn(
                     icon = ZIcons.Add,
@@ -472,7 +457,7 @@ fun viewlibrary(
                             songScope = songScope,
                             onSelectFilter = { filter = it },
                             onSelectSongScope = { songScope = it },
-                            onImportM3u = { importM3uLauncher.launch("*/*") },
+                            onImportM3u = { showImport = true },
                         )
                     }
 
@@ -580,7 +565,7 @@ fun viewlibrary(
                             songScope = songScope,
                             onSelectFilter = { filter = it },
                             onSelectSongScope = { songScope = it },
-                            onImportM3u = { importM3uLauncher.launch("*/*") },
+                            onImportM3u = { showImport = true },
                             horizontalPad = 4.dp,
                         )
                     }
@@ -642,7 +627,7 @@ fun viewlibrary(
                             songScope = songScope,
                             onSelectFilter = { filter = it },
                             onSelectSongScope = { songScope = it },
-                            onImportM3u = { importM3uLauncher.launch("*/*") },
+                            onImportM3u = { showImport = true },
                         )
                     }
 
@@ -767,9 +752,9 @@ private fun libchips(
                 }
             } else if (filter == LibFilter.PLAYLISTS) {
                 chip(
-                    label = "Import M3U",
+                    label = "Import Playlist",
                     selected = false,
-                    leadingIcon = ZIcons.Playlist,
+                    leadingIcon = ZIcons.Import,
                     onClick = onImportM3u,
                 )
             }
@@ -988,11 +973,12 @@ private fun griditem(
         is LibEntry.PlaylistEntry -> {
             val pl = entry.playlist
             val thumbs = pl.thumbnails.ifEmpty { listOfNotNull(pl.artwork.takeIf(String::isNotBlank)) }
+            val synced = !pl.remoteId.isNullOrBlank()
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onNavigate(Route.Playlist(pl.id, local = pl.local)) }
+                    .clickable { onNavigate(Route.Playlist(pl.id, local = pl.local || synced)) }
                     .padding(6.dp),
             ) {
                 covergrid(
@@ -1013,13 +999,26 @@ private fun griditem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.basicMarquee(),
                 )
-                Text(
-                    text = pl.countText ?: pl.author ?: "Playlist",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = glassTokens.inkSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    if (synced) {
+                        Icon(
+                            imageVector = ZIcons.Cloud,
+                            contentDescription = null,
+                            tint = glassTokens.accent,
+                            modifier = Modifier.size(13.dp),
+                        )
+                    }
+                    Text(
+                        text = pl.countText ?: pl.author ?: "Playlist",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = glassTokens.inkSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
 
@@ -1187,11 +1186,12 @@ private fun listitem(
         is LibEntry.PlaylistEntry -> {
             val pl = entry.playlist
             val thumbs = pl.thumbnails.ifEmpty { listOfNotNull(pl.artwork.takeIf(String::isNotBlank)) }
+            val synced = !pl.remoteId.isNullOrBlank()
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onNavigate(Route.Playlist(pl.id, local = pl.local)) }
+                    .clickable { onNavigate(Route.Playlist(pl.id, local = pl.local || synced)) }
                     .padding(horizontal = 18.dp, vertical = 8.dp),
             ) {
                 covergrid(
@@ -1210,13 +1210,26 @@ private fun listitem(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        text = listOfNotNull(pl.author, pl.countText).joinToString(" - "),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = glassTokens.inkSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    ) {
+                        if (synced) {
+                            Icon(
+                                imageVector = ZIcons.Cloud,
+                                contentDescription = null,
+                                tint = glassTokens.accent,
+                                modifier = Modifier.size(13.dp),
+                            )
+                        }
+                        Text(
+                            text = listOfNotNull(pl.author, pl.countText).joinToString(" - "),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = glassTokens.inkSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 Icon(ZIcons.ChevronRight, null, tint = glassTokens.inkMuted, modifier = Modifier.size(18.dp))
             }

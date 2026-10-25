@@ -62,7 +62,7 @@ fun Track.trackart(size: Int = 544): String {
 }
 
 fun Track.fallbackart(): String? =
-    if (id.length in 8..16 && !id.startsWith("local_") && !id.startsWith("auto_")) {
+    if (id.length in 8..16 && !id.startsWith("local_") && !id.startsWith("auto_") && !id.startsWith("yt_")) {
         "https://i.ytimg.com/vi/$id/hqdefault.jpg"
     } else {
         null

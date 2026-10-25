@@ -3,6 +3,7 @@ package zuiwan.tube
 import com.metrolist.innertubex.InnerTube
 import com.metrolist.innertubex.models.YouTubeClient
 import com.metrolist.innertubex.models.YouTubeLocale
+import com.metrolist.innertubex.models.response.CreatePlaylistResponse
 import com.metrolist.innertubex.models.response.GetTranscriptResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -11,6 +12,7 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.compression.ContentEncoding
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -66,12 +68,23 @@ class TubeClient {
         )
     }
 
+    fun isauthed(): Boolean = innerTube.hasSapCookieAuth()
+
+    suspend fun ensurevisitor() {
+        if (innerTube.visitorData.isNullOrBlank()) {
+            runCatching { innerTube.fetchFreshVisitorData() }
+        }
+    }
+
     fun applysession(data: SessionData) {
         if (data.active) {
+            val cleanSyncId = data.dataSyncId
+                .substringBefore("||")
+                .takeIf { it.isNotBlank() }
             innerTube.replaceSession(
                 cookie = data.cookie,
                 visitorData = data.visitorData.takeIf { it.isNotBlank() },
-                dataSyncId = data.dataSyncId.takeIf { it.isNotBlank() },
+                dataSyncId = cleanSyncId,
                 authUser = data.authUser.ifBlank { "0" },
                 useLoginForBrowse = true,
             )
@@ -207,6 +220,7 @@ class TubeClient {
 
     suspend fun loadplaylist(playlistId: String): Result<PlaylistDetail> =
         runCatching {
+            ensurevisitor()
             val clean = if (playlistId.startsWith("VL")) playlistId else "VL$playlistId"
             val res = innerTube.browse(
                 YouTubeClient.WEB_REMIX,
@@ -218,12 +232,60 @@ class TubeClient {
 
     suspend fun moreplaylist(continuation: String): Result<Pair<List<Track>, String?>> =
         runCatching {
+            ensurevisitor()
             val res = innerTube.browse(
                 YouTubeClient.WEB_REMIX,
                 continuation = continuation,
                 setLogin = innerTube.hasSapCookieAuth(),
             )
             TubeParser.moretracks(parseobj(res.bodyAsText()))
+        }
+
+    suspend fun fullplaylist(playlistId: String, maxPages: Int = 30): Result<PlaylistDetail> =
+        runCatching {
+            val first = loadplaylist(playlistId).getOrThrow()
+            val all = first.tracks.toMutableList()
+            var cont = first.continuation
+            var pages = 0
+            while (!cont.isNullOrBlank() && pages < maxPages) {
+                pages++
+                val (more, next) = moreplaylist(cont).getOrNull() ?: break
+                if (more.isEmpty()) break
+                all += more
+                cont = next
+            }
+            first.copy(
+                tracks = all.distinctBy { it.setVideoId ?: "${it.id}_${all.indexOf(it)}" },
+                continuation = null,
+            )
+        }
+
+    suspend fun loadlibrary(browseId: String, maxPages: Int = 25): Result<List<FeedItem>> =
+        runCatching {
+            if (!innerTube.hasSapCookieAuth()) return@runCatching emptyList()
+            ensurevisitor()
+            val firstRes = innerTube.browse(
+                YouTubeClient.WEB_REMIX,
+                browseId = browseId,
+                setLogin = true,
+            )
+            val (initial, firstCont) = TubeParser.parselibrary(parseobj(firstRes.bodyAsText()))
+            val all = initial.toMutableList()
+            var cont = firstCont
+            var pages = 0
+            while (!cont.isNullOrBlank() && pages < maxPages) {
+                pages++
+                val moreRes = innerTube.browse(
+                    YouTubeClient.WEB_REMIX,
+                    continuation = cont,
+                    setLogin = true,
+                )
+                val (more, next) = TubeParser.parselibrary(parseobj(moreRes.bodyAsText()))
+                if (more.isEmpty()) break
+                all += more
+                cont = next
+            }
+            all.distinctBy { it.key }
         }
 
     suspend fun suggestquery(input: String): Result<SuggestionBundle> =
@@ -315,20 +377,95 @@ class TubeClient {
 
     suspend fun fetchaccount(): Result<AccountProfile> =
         runCatching {
-            val res = innerTube.accountMenu(YouTubeClient.WEB_REMIX)
-            TubeParser.parseaccount(parseobj(res.bodyAsText())) ?: error("Account info unavailable")
+            ensurevisitor()
+            val menuProfile = runCatching {
+                val res = innerTube.accountMenu(YouTubeClient.WEB_REMIX)
+                TubeParser.parseaccount(parseobj(res.bodyAsText()))
+            }.getOrNull()
+            if (menuProfile != null) return@runCatching menuProfile
+
+            val listRes = innerTube.accountsList(YouTubeClient.WEB_REMIX)
+            TubeParser.parseaccount(parseobj(listRes.bodyAsText())) ?: error("Account info unavailable")
         }
 
-    suspend fun synclibrary(): Result<List<Track>> =
+    suspend fun createremote(title: String): Result<String> =
         runCatching {
-            if (!innerTube.hasSapCookieAuth()) return@runCatching emptyList()
-            val likedDetail = loadplaylist("LM").getOrNull()
-            likedDetail?.tracks.orEmpty().map { it.copy(liked = true) }
+            check(innerTube.hasSapCookieAuth()) { "Not signed in to YouTube Music" }
+            ensurevisitor()
+            val res = innerTube.createPlaylist(YouTubeClient.WEB_REMIX, title)
+            val raw = res.bodyAsText()
+            val id = runCatching { json.decodeFromString<CreatePlaylistResponse>(raw).playlistId }.getOrNull()
+                ?: parseobj(raw)["playlistId"].str()
+                ?: error("Failed to create YouTube Music playlist")
+            id.removePrefix("VL")
+        }
+
+    suspend fun renameremote(playlistId: String, title: String): Result<Unit> =
+        runCatching {
+            if (!innerTube.hasSapCookieAuth()) return@runCatching
+            ensurevisitor()
+            val res = innerTube.renamePlaylist(YouTubeClient.WEB_REMIX, playlistId.removePrefix("VL"), title)
+            check(res.status.isSuccess()) { "Rename failed" }
+        }
+
+    suspend fun deleteremote(playlistId: String): Result<Unit> =
+        runCatching {
+            if (!innerTube.hasSapCookieAuth()) return@runCatching
+            ensurevisitor()
+            val res = innerTube.deletePlaylist(YouTubeClient.WEB_REMIX, playlistId.removePrefix("VL"))
+            check(res.status.isSuccess()) { "Delete failed" }
+        }
+
+    suspend fun likelist(playlistId: String, liked: Boolean): Result<Unit> =
+        runCatching {
+            if (!innerTube.hasSapCookieAuth()) return@runCatching
+            ensurevisitor()
+            val clean = playlistId.removePrefix("VL")
+            val res = if (liked) {
+                innerTube.likePlaylist(YouTubeClient.WEB_REMIX, clean)
+            } else {
+                innerTube.unlikePlaylist(YouTubeClient.WEB_REMIX, clean)
+            }
+            check(res.status.isSuccess()) { "Playlist save failed" }
+        }
+
+    suspend fun addremote(playlistId: String, videoId: String): Result<Unit> =
+        runCatching {
+            if (!innerTube.hasSapCookieAuth()) return@runCatching
+            ensurevisitor()
+            val res = innerTube.addToPlaylist(YouTubeClient.WEB_REMIX, playlistId.removePrefix("VL"), videoId)
+            check(res.status.isSuccess()) { "Add to YouTube Music playlist failed" }
+        }
+
+    suspend fun addlistremote(playlistId: String, sourcePlaylistId: String): Result<Unit> =
+        runCatching {
+            if (!innerTube.hasSapCookieAuth()) return@runCatching
+            ensurevisitor()
+            val res = innerTube.addPlaylistToPlaylist(
+                YouTubeClient.WEB_REMIX,
+                playlistId.removePrefix("VL"),
+                sourcePlaylistId.removePrefix("VL"),
+            )
+            check(res.status.isSuccess()) { "Add playlist failed" }
+        }
+
+    suspend fun removeremote(playlistId: String, videoId: String, setVideoId: String): Result<Unit> =
+        runCatching {
+            if (!innerTube.hasSapCookieAuth()) return@runCatching
+            ensurevisitor()
+            val res = innerTube.removePlaylistSong(
+                YouTubeClient.WEB_REMIX,
+                playlistId.removePrefix("VL"),
+                setVideoId,
+                videoId,
+            )
+            check(res.status.isSuccess()) { "Remove from YouTube Music playlist failed" }
         }
 
     suspend fun likeremote(videoId: String, liked: Boolean) {
         if (!innerTube.hasSapCookieAuth()) return
         runCatching {
+            ensurevisitor()
             if (liked) {
                 innerTube.likeVideo(YouTubeClient.WEB_REMIX, videoId)
             } else {
@@ -340,6 +477,7 @@ class TubeClient {
     suspend fun subscriberemote(channelId: String, subscribe: Boolean) {
         if (!innerTube.hasSapCookieAuth() || channelId.isBlank()) return
         runCatching {
+            ensurevisitor()
             if (subscribe) {
                 innerTube.subscribeChannel(YouTubeClient.WEB_REMIX, channelId, "EgIIAhgA")
             } else {

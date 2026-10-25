@@ -62,6 +62,8 @@ import zuiwan.model.Track
 import zuiwan.model.artistline
 import zuiwan.model.trackart
 import zuiwan.model.upscaleart
+import zuiwan.sheet.exportsheet
+import zuiwan.sheet.importsheet
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
 import zuiwan.ui.hero
@@ -93,13 +95,22 @@ fun viewplaylist(
     val downloadedTracks by hub.downloadedTracks.collectAsState()
     val historyTracks by hub.historyTracks.collectAsState()
     val topTracks by hub.topTracks.collectAsState()
+    val session by hub.session.collectAsState()
 
     val isAuto = playlistId.startsWith("auto_")
-    val isLocalEditable = !isAuto && (local || playlistId.startsWith("local_"))
+    val cleanRemoteId = playlistId.removePrefix("VL").removePrefix("yt_")
+    val storedPl = remember(savedPlaylists, playlistId) {
+        savedPlaylists.firstOrNull { it.id == playlistId || it.remoteId == cleanRemoteId }
+    }
+    val dbPlaylistId = storedPl?.id ?: playlistId
+    val isStored = !isAuto && (storedPl != null || local || playlistId.startsWith("local_") || playlistId.startsWith("yt_"))
+    val isLocalEditable = !isAuto && (local && storedPl == null || playlistId.startsWith("local_") || storedPl?.editable == true)
 
     var remoteOrLocalDetail by remember(playlistId, local) { mutableStateOf<PlaylistDetail?>(null) }
     var loading by remember(playlistId, local) { mutableStateOf(!isAuto) }
     var showRename by remember { mutableStateOf(false) }
+    var showExport by remember { mutableStateOf(false) }
+    var showImportSongs by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
     var menuOpen by remember { mutableStateOf(false) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
@@ -140,24 +151,24 @@ fun viewplaylist(
         }
     }
 
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("audio/x-mpegurl"),
-    ) { uri ->
-        if (uri != null) hub.exportlist(playlistId, uri)
-    }
-
     suspend fun reload() {
         if (isAuto) return
         loading = true
-        remoteOrLocalDetail = if (isLocalEditable) {
-            hub.localplaylist(playlistId)
+        if (isStored) {
+            var localRes = hub.localplaylist(dbPlaylistId)
+            val remoteRef = storedPl?.remoteId ?: playlistId.takeIf { it.startsWith("yt_") }?.removePrefix("yt_")
+            if ((localRes == null || localRes.tracks.isEmpty()) && !remoteRef.isNullOrBlank()) {
+                runCatching { hub.sync.syncone(dbPlaylistId) }
+                localRes = hub.localplaylist(dbPlaylistId) ?: hub.tube.loadplaylist(remoteRef).getOrNull()
+            }
+            remoteOrLocalDetail = localRes
         } else {
-            hub.tube.loadplaylist(playlistId).getOrNull()
+            remoteOrLocalDetail = hub.tube.loadplaylist(playlistId).getOrNull()
         }
         loading = false
     }
 
-    LaunchedEffect(playlistId, local) {
+    LaunchedEffect(playlistId, local, savedPlaylists.size) {
         reload()
     }
 
@@ -244,7 +255,7 @@ fun viewplaylist(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        hub.renameplaylist(playlistId, renameText)
+                        hub.renameplaylist(dbPlaylistId, renameText)
                         showRename = false
                         scope.launch { reload() }
                     },
@@ -260,6 +271,27 @@ fun viewplaylist(
         )
     }
 
+    if (showExport && detail != null) {
+        exportsheet(
+            hub = hub,
+            title = detail.playlist.title,
+            tracks = detail.tracks,
+            artwork = detail.playlist.artwork,
+            onDismiss = { showExport = false },
+        )
+    }
+
+    if (showImportSongs && isLocalEditable) {
+        importsheet(
+            hub = hub,
+            targetPlaylistId = dbPlaylistId,
+            onDismiss = { showImportSongs = false },
+            onImported = {
+                scope.launch { reload() }
+            },
+        )
+    }
+
     val autoFallbackIcon = when (playlistId) {
         "auto_liked" -> ZIcons.HeartFilled
         "auto_offline" -> ZIcons.Offline
@@ -269,7 +301,7 @@ fun viewplaylist(
     }
 
     val isBookmarked = remember(savedPlaylists, playlistId) {
-        savedPlaylists.any { it.id == playlistId }
+        savedPlaylists.any { it.id == playlistId || it.remoteId == cleanRemoteId }
     }
 
     scrollhost(
@@ -301,7 +333,13 @@ fun viewplaylist(
                                 }
                             },
                         )
-                        if (isLocalEditable) {
+                        if (detail.tracks.isNotEmpty()) {
+                            iconbtn(
+                                icon = ZIcons.Export,
+                                onClick = { showExport = true },
+                            )
+                        }
+                        if (!isAuto && (isStored || detail.tracks.isNotEmpty())) {
                             Box {
                                 iconbtn(
                                     icon = ZIcons.MoreHoriz,
@@ -312,32 +350,71 @@ fun viewplaylist(
                                     onDismissRequest = { menuOpen = false },
                                     containerColor = glassTokens.glassStrong,
                                 ) {
-                                    DropdownMenuItem(
-                                        text = { Text("Rename playlist", color = glassTokens.ink) },
-                                        leadingIcon = { Icon(ZIcons.Edit, null, tint = glassTokens.inkSecondary, modifier = Modifier.size(18.dp)) },
-                                        onClick = {
-                                            menuOpen = false
-                                            renameText = detail.playlist.title
-                                            showRename = true
-                                        },
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Export .m3u", color = glassTokens.ink) },
-                                        leadingIcon = { Icon(ZIcons.Share, null, tint = glassTokens.inkSecondary, modifier = Modifier.size(18.dp)) },
-                                        onClick = {
-                                            menuOpen = false
-                                            exportLauncher.launch("${detail.playlist.title}.m3u")
-                                        },
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Delete playlist", color = glassTokens.danger) },
-                                        leadingIcon = { Icon(ZIcons.Trash, null, tint = glassTokens.danger, modifier = Modifier.size(18.dp)) },
-                                        onClick = {
-                                            menuOpen = false
-                                            hub.deleteplaylist(playlistId)
-                                            onBack()
-                                        },
-                                    )
+                                    if (session.active && isStored) {
+                                        val hasRemote = !storedPl?.remoteId.isNullOrBlank() || playlistId.startsWith("yt_")
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    if (hasRemote) "Sync with YouTube Music" else "Sync to YouTube Music",
+                                                    color = glassTokens.ink,
+                                                )
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    if (hasRemote) ZIcons.Sync else ZIcons.Cloud,
+                                                    null,
+                                                    tint = glassTokens.accent,
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            },
+                                            onClick = {
+                                                menuOpen = false
+                                                hub.syncplaylist(dbPlaylistId) {
+                                                    scope.launch { reload() }
+                                                }
+                                            },
+                                        )
+                                    }
+                                    if (isLocalEditable) {
+                                        DropdownMenuItem(
+                                            text = { Text("Import songs", color = glassTokens.ink) },
+                                            leadingIcon = { Icon(ZIcons.Import, null, tint = glassTokens.inkSecondary, modifier = Modifier.size(18.dp)) },
+                                            onClick = {
+                                                menuOpen = false
+                                                showImportSongs = true
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Rename playlist", color = glassTokens.ink) },
+                                            leadingIcon = { Icon(ZIcons.Edit, null, tint = glassTokens.inkSecondary, modifier = Modifier.size(18.dp)) },
+                                            onClick = {
+                                                menuOpen = false
+                                                renameText = detail.playlist.title
+                                                showRename = true
+                                            },
+                                        )
+                                    }
+                                    if (detail.tracks.isNotEmpty()) {
+                                        DropdownMenuItem(
+                                            text = { Text("Export playlist", color = glassTokens.ink) },
+                                            leadingIcon = { Icon(ZIcons.Export, null, tint = glassTokens.inkSecondary, modifier = Modifier.size(18.dp)) },
+                                            onClick = {
+                                                menuOpen = false
+                                                showExport = true
+                                            },
+                                        )
+                                    }
+                                    if (isStored) {
+                                        DropdownMenuItem(
+                                            text = { Text("Delete playlist", color = glassTokens.danger) },
+                                            leadingIcon = { Icon(ZIcons.Trash, null, tint = glassTokens.danger, modifier = Modifier.size(18.dp)) },
+                                            onClick = {
+                                                menuOpen = false
+                                                hub.deleteplaylist(dbPlaylistId)
+                                                onBack()
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -561,7 +638,7 @@ fun viewplaylist(
                                             .size(34.dp)
                                             .clip(CircleShape)
                                             .clickable {
-                                                hub.droptrack(playlistId, song.id)
+                                                hub.droptrack(dbPlaylistId, song.id)
                                                 scope.launch { reload() }
                                             },
                                     ) {
@@ -602,7 +679,7 @@ fun viewplaylist(
                                                                 ids.add(target, moved)
                                                                 draggingIdx = target
                                                                 dragOffsetPx -= steps * rowHeightPx
-                                                                hub.reorderplaylist(playlistId, ids)
+                                                                hub.reorderplaylist(dbPlaylistId, ids)
                                                                 scope.launch { reload() }
                                                             }
                                                         }

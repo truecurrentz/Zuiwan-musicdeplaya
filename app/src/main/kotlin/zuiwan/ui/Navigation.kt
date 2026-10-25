@@ -36,8 +36,11 @@ sealed interface Route {
 
     data object Home : Route { override val key = "home" }
     data object Explore : Route { override val key = "explore" }
-    data object Search : Route { override val key = "search" }
+    data class Search(val initialQuery: String = "") : Route {
+        override val key = if (initialQuery.isBlank()) "search" else "search:$initialQuery"
+    }
     data object Library : Route { override val key = "library" }
+    data object Recognize : Route { override val key = "recognize" }
 
     data class Album(val id: String) : Route { override val key = "album:$id" }
     data class Artist(val id: String) : Route { override val key = "artist:$id" }
@@ -54,7 +57,7 @@ sealed interface Route {
 
 enum class MainTab(val route: Route, val label: String, val icon: ImageVector) {
     HOME(Route.Home, "Home", ZIcons.Home),
-    SEARCH(Route.Search, "Search", ZIcons.Search),
+    SEARCH(Route.Search(), "Search", ZIcons.Search),
     LIBRARY(Route.Library, "Library", ZIcons.Grid),
 }
 
@@ -69,7 +72,7 @@ class NavStack {
             for (i in stack.lastIndex downTo 0) {
                 when (stack[i]) {
                     Route.Home -> return MainTab.HOME
-                    Route.Search, Route.Explore -> return MainTab.SEARCH
+                    is Route.Search, Route.Explore, Route.Recognize -> return MainTab.SEARCH
                     Route.Library -> return MainTab.LIBRARY
                     else -> {}
                 }
@@ -78,7 +81,7 @@ class NavStack {
         }
 
     fun switchtab(tab: MainTab) {
-        if (current == tab.route) return
+        if (current.key == tab.route.key) return
         stack.clear()
         stack.add(tab.route)
     }

@@ -18,6 +18,9 @@ interface MusicDao {
     @Query("SELECT * FROM tracks WHERE liked = 1 ORDER BY COALESCE(likedAt, 0) DESC")
     fun likedtracks(): Flow<List<TrackEntity>>
 
+    @Query("SELECT id FROM tracks WHERE liked = 1")
+    suspend fun likedidslist(): List<String>
+
     @Query("UPDATE tracks SET liked = :liked, likedAt = :at WHERE id = :id")
     suspend fun setliked(id: String, liked: Boolean, at: Long?)
 
@@ -75,11 +78,23 @@ interface MusicDao {
     @Query("SELECT * FROM albums WHERE saved = 1 ORDER BY savedAt DESC")
     fun savedalbums(): Flow<List<AlbumEntity>>
 
+    @Query("SELECT * FROM albums WHERE saved = 1")
+    suspend fun savedalbumslist(): List<AlbumEntity>
+
+    @Query("SELECT * FROM albums WHERE id = :id LIMIT 1")
+    suspend fun getalbum(id: String): AlbumEntity?
+
     @Upsert
     suspend fun putalbum(entity: AlbumEntity)
 
     @Query("SELECT * FROM artists WHERE saved = 1 ORDER BY savedAt DESC")
     fun savedartists(): Flow<List<ArtistEntity>>
+
+    @Query("SELECT * FROM artists WHERE saved = 1")
+    suspend fun savedartistslist(): List<ArtistEntity>
+
+    @Query("SELECT * FROM artists WHERE id = :id LIMIT 1")
+    suspend fun getartist(id: String): ArtistEntity?
 
     @Upsert
     suspend fun putartist(entity: ArtistEntity)
@@ -87,8 +102,14 @@ interface MusicDao {
     @Query("SELECT * FROM playlists ORDER BY createdAt DESC")
     fun allplaylists(): Flow<List<PlaylistEntity>>
 
+    @Query("SELECT * FROM playlists ORDER BY createdAt DESC")
+    suspend fun allplaylistslist(): List<PlaylistEntity>
+
     @Query("SELECT * FROM playlists WHERE id = :id LIMIT 1")
     suspend fun getplaylist(id: String): PlaylistEntity?
+
+    @Query("SELECT * FROM playlists WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun getremoteplaylist(remoteId: String): PlaylistEntity?
 
     @Upsert
     suspend fun putplaylist(entity: PlaylistEntity)
@@ -107,6 +128,15 @@ interface MusicDao {
 
     @Upsert
     suspend fun linktrack(entity: PlaylistTrackEntity)
+
+    @Query("SELECT * FROM playlist_tracks WHERE playlistId = :playlistId ORDER BY position ASC")
+    suspend fun playlistlinks(playlistId: String): List<PlaylistTrackEntity>
+
+    @Query("SELECT setVideoId FROM playlist_tracks WHERE playlistId = :playlistId AND trackId = :trackId LIMIT 1")
+    suspend fun getsetvideo(playlistId: String, trackId: String): String?
+
+    @Query("UPDATE playlist_tracks SET setVideoId = :setVideoId WHERE playlistId = :playlistId AND trackId = :trackId")
+    suspend fun updatesetvideo(playlistId: String, trackId: String, setVideoId: String?)
 
     @Query("DELETE FROM playlist_tracks WHERE playlistId = :playlistId AND trackId = :trackId")
     suspend fun unlinktrack(playlistId: String, trackId: String)
@@ -156,4 +186,16 @@ interface MusicDao {
 
     @Query("DELETE FROM saved_queue")
     suspend fun clearqueue()
+
+    @Query("SELECT * FROM recognized ORDER BY recognizedAt DESC LIMIT 100")
+    fun recognizedlist(): Flow<List<RecognizedEntity>>
+
+    @Upsert
+    suspend fun putrecognized(entity: RecognizedEntity)
+
+    @Query("DELETE FROM recognized WHERE id = :id")
+    suspend fun deleterecognized(id: String)
+
+    @Query("DELETE FROM recognized")
+    suspend fun clearrecognized()
 }

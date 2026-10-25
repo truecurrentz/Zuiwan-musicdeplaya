@@ -109,6 +109,10 @@ fun viewhome(
             Column(modifier = Modifier.fillMaxWidth()) {
                 brandbar {
                     iconbtn(
+                        icon = ZIcons.Mic,
+                        onClick = { onNavigate(Route.Recognize) },
+                    )
+                    iconbtn(
                         icon = ZIcons.History,
                         onClick = { onNavigate(Route.History) },
                     )

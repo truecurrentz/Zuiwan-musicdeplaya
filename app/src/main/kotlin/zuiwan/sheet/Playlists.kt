@@ -18,8 +18,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -50,7 +52,10 @@ fun pickersheet(
     val hub = LocalHub.current
     val glassTokens = LocalGlass.current
     val playlists by hub.playlists.collectAsState()
+    val session by hub.session.collectAsState()
+    val loggedIn = session.active
     var newName by remember { mutableStateOf("") }
+    var syncYoutube by remember(loggedIn) { mutableStateOf(loggedIn) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -108,13 +113,46 @@ fun pickersheet(
                     primary = true,
                     onClick = {
                         if (newName.isNotBlank()) {
-                            hub.createplaylist(newName) { createdId ->
+                            hub.createplaylist(
+                                title = newName,
+                                syncYoutube = loggedIn && syncYoutube,
+                            ) { createdId ->
                                 hub.addtrack(createdId, track)
                                 onDismiss()
                             }
                         }
                     },
                 )
+            }
+
+            if (loggedIn) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { syncYoutube = !syncYoutube }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Icon(
+                        imageVector = ZIcons.Cloud,
+                        contentDescription = null,
+                        tint = glassTokens.accent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = "Sync new playlist with YouTube Music",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = glassTokens.ink,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = syncYoutube,
+                        onCheckedChange = { syncYoutube = it },
+                    )
+                }
             }
 
             Spacer(Modifier.height(14.dp))
@@ -153,7 +191,20 @@ fun pickersheet(
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(pl.title, style = MaterialTheme.typography.titleMedium, color = glassTokens.ink)
-                                Text(pl.countText ?: "0 songs", style = MaterialTheme.typography.bodyMedium, color = glassTokens.inkSecondary)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                ) {
+                                    if (!pl.remoteId.isNullOrBlank()) {
+                                        Icon(
+                                            imageVector = ZIcons.Cloud,
+                                            contentDescription = null,
+                                            tint = glassTokens.accent,
+                                            modifier = Modifier.size(13.dp),
+                                        )
+                                    }
+                                    Text(pl.countText ?: "0 songs", style = MaterialTheme.typography.bodyMedium, color = glassTokens.inkSecondary)
+                                }
                             }
                         }
                     }
