@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en"><head><title></title><script>
+var bgVmFunctions = null;
+var bgVm = null;
+var bgProgram = null;
+var poTokenMinter = null;
+
+function loadBotGuard(challengeData) {
+  bgVm = window[challengeData.globalName];
+  bgProgram = challengeData.program;
+  bgVmFunctions = null;
+  if (!bgVm || !bgVm.a) {
+    throw new Error('BotGuard VM unavailable');
+  }
+  var vmFunctionsCallback = function(asyncSnapshotFunction, shutdownFunction, passEventFunction, checkCameraFunction) {
+    bgVmFunctions = {
+      asyncSnapshotFunction: asyncSnapshotFunction,
+      shutdownFunction: shutdownFunction,
+      passEventFunction: passEventFunction,
+      checkCameraFunction: checkCameraFunction
+    };
+  };
+  bgVm.a(bgProgram, vmFunctionsCallback, true, undefined, function() {}, [[], []]);
+  return new Promise(function(resolve, reject) {
+    var attempts = 0;
+    var checkInterval = setInterval(function() {
+      if (bgVmFunctions && bgVmFunctions.asyncSnapshotFunction) {
+        clearInterval(checkInterval);
+        resolve({ vmFunctions: bgVmFunctions, vm: bgVm, program: bgProgram });
+      } else if (attempts >= 10000) {
+        clearInterval(checkInterval);
+        reject(new Error('BotGuard timeout'));
+      }
+      attempts++;
+    }, 1);
+  });
+}
+
+function snapshot(botguard, args) {
+  return new Promise(function(resolve, reject) {
+    if (!botguard.vmFunctions || !botguard.vmFunctions.asyncSnapshotFunction) {
+      return reject(new Error('Snapshot unavailable'));
+    }
+    try {
+      botguard.vmFunctions.asyncSnapshotFunction(
+        function(response) { resolve(response); },
+        [args.contentBinding, args.signedTimestamp, args.webPoSignalOutput, args.skipPrivacyBuffer]
+      );
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+function runBotGuard(challengeData) {
+  var interpreterJavascript = challengeData.interpreterJavascript.privateDoNotAccessOrElseSafeScriptWrappedValue;
+  if (!interpreterJavascript) {
+    throw new Error('No interpreter script');
+  }
+  new Function(interpreterJavascript)();
+  var webPoSignalOutput = [];
+  return loadBotGuard({
+    globalName: challengeData.globalName,
+    program: challengeData.program
+  }).then(function(botguard) {
+    return snapshot(botguard, { webPoSignalOutput: webPoSignalOutput });
+  }).then(function(botguardResponse) {
+    return { webPoSignalOutput: webPoSignalOutput, botguardResponse: botguardResponse };
+  });
+}
+
+async function createPoTokenMinter(webPoSignalOutput, integrityToken) {
+  var getMinter = webPoSignalOutput[0];
+  if (typeof getMinter !== 'function') {
+    throw new Error('Minter factory invalid');
+  }
+  var minterResult = getMinter(integrityToken);
+  var mintCallback = (minterResult && typeof minterResult.then === 'function') ? await minterResult : minterResult;
+  if (typeof mintCallback !== 'function') {
+    throw new Error('Mint callback invalid');
+  }
+  poTokenMinter = mintCallback;
+}
+
+async function obtainPoToken(identifier) {
+  if (!poTokenMinter) {
+    throw new Error('Minter uninitialized');
+  }
+  var mintResult = poTokenMinter(identifier);
+  var result = (mintResult && typeof mintResult.then === 'function') ? await mintResult : mintResult;
+  if (!(result instanceof Uint8Array)) {
+    throw new Error('Invalid token output');
+  }
+  return result;
+}
+</script></head><body></body></html>

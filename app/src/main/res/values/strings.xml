@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Zuiwan</string>
+    <string name="playback_channel">Music Playback</string>
+    <string name="channel_playback">Music Playback</string>
+    <string name="action_like">Like</string>
+    <string name="action_shuffle">Shuffle</string>
+    <string name="action_repeat">Repeat</string>
+</resources>
