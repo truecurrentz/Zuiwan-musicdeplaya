@@ -64,7 +64,6 @@ import zuiwan.screen.viewstats
 import zuiwan.sheet.pickersheet
 import zuiwan.sheet.infosheet
 import zuiwan.sheet.menusheet
-import zuiwan.sheet.updatesheet
 import zuiwan.state.Hub
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalHaze
@@ -78,7 +77,6 @@ import zuiwan.ui.Route
 
 class Activity : ComponentActivity() {
     private var incomingUrl by mutableStateOf<String?>(null)
-    private var openUpdateReq by mutableStateOf(false)
     private var installUpdateReq by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,7 +86,6 @@ class Activity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.auto(Color.Transparent.toArgb(), Color.Transparent.toArgb()),
         )
         incomingUrl = intent?.dataString
-        openUpdateReq = intent?.getBooleanExtra("open_update", false) == true
         installUpdateReq = intent?.getBooleanExtra("install_update", false) == true
         val hub = (application as App).hub
 
@@ -98,8 +95,6 @@ class Activity : ComponentActivity() {
                     hub = hub,
                     deepLink = incomingUrl,
                     onDeepLinkConsumed = { incomingUrl = null },
-                    openUpdate = openUpdateReq,
-                    onOpenUpdateConsumed = { openUpdateReq = false },
                     installUpdate = installUpdateReq,
                     onInstallUpdateConsumed = { installUpdateReq = false },
                 )
@@ -115,9 +110,6 @@ class Activity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         incomingUrl = intent.dataString
-        if (intent.getBooleanExtra("open_update", false)) {
-            openUpdateReq = true
-        }
         if (intent.getBooleanExtra("install_update", false)) {
             installUpdateReq = true
         }
@@ -129,8 +121,6 @@ private fun rootview(
     hub: Hub,
     deepLink: String?,
     onDeepLinkConsumed: () -> Unit,
-    openUpdate: Boolean,
-    onOpenUpdateConsumed: () -> Unit,
     installUpdate: Boolean,
     onInstallUpdateConsumed: () -> Unit,
 ) {
@@ -139,8 +129,6 @@ private fun rootview(
     val playback by hub.pilot.state.collectAsState()
     val likedIds by hub.likedIds.collectAsState()
     val notice by hub.notice.collectAsState()
-    val updatePrompt by hub.updatePrompt.collectAsState()
-    val updateState by hub.updateState.collectAsState()
 
     val nav = remember { NavStack() }
     val stateHolder = rememberSaveableStateHolder()
@@ -155,7 +143,7 @@ private fun rootview(
     val notifPermLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
-        hub.runupdater(force = false, manual = false)
+        hub.runupdater(force = true, manual = false)
     }
 
     LaunchedEffect(settings.checkUpdates, settings.nightlyUpdates) {
@@ -176,28 +164,17 @@ private fun rootview(
         }
     }
 
-    LaunchedEffect(openUpdate) {
-        if (openUpdate) {
-            onOpenUpdateConsumed()
-            playerExpanded = false
-            if (hub.updateState.value.latest != null) {
-                hub.openupdate()
-            } else {
-                nav.open(Route.Settings)
-                hub.runupdater(force = true, manual = true)
-            }
-        }
-    }
-
     LaunchedEffect(installUpdate) {
         if (installUpdate) {
             onInstallUpdateConsumed()
             playerExpanded = false
             val target = hub.updateState.value.latest
+                ?: hub.updater.checkupdate(
+                    force = true,
+                    includeNightly = settings.nightlyUpdates,
+                ).getOrNull()?.first
             if (target != null) {
                 hub.installupdate(target)
-            } else {
-                hub.runupdater(force = true, manual = true)
             }
         }
     }
@@ -422,18 +399,6 @@ private fun rootview(
                     infosheet(
                         track = target,
                         onDismiss = { infoTrack = null },
-                    )
-                }
-
-                updatePrompt?.let { target ->
-                    updatesheet(
-                        release = target,
-                        downloading = updateState.downloading,
-                        progress = updateState.downloadProgress,
-                        readyToInstall = updateState.readyTag == target.tagName && !updateState.readyApkPath.isNullOrBlank(),
-                        onInstall = { hub.installupdate(target) },
-                        onDismiss = { hub.hideupdate(rememberTag = false) },
-                        onLater = { hub.hideupdate(rememberTag = true) },
                     )
                 }
 

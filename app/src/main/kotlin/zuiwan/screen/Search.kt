@@ -67,9 +67,11 @@ import zuiwan.ui.iconbtn
 import zuiwan.ui.mediacard
 import zuiwan.ui.picktile
 import zuiwan.ui.Route
+import zuiwan.ui.scrollhost
 import zuiwan.ui.sectionbar
 import zuiwan.ui.songrow
 import zuiwan.ui.ZIcons
+import zuiwan.ui.headerscroll
 
 private enum class DiscoverPane(val label: String, val icon: ImageVector) {
     EXPLORE("Explore", ZIcons.Explore),
@@ -94,7 +96,6 @@ fun viewsearch(
     val homeFeed by hub.homeFeed.collectAsState()
     val history by hub.historyTracks.collectAsState()
     val playback by hub.pilot.state.collectAsState()
-    val updateState by hub.updateState.collectAsState()
 
     var query by rememberSaveable { mutableStateOf("") }
     var submitted by rememberSaveable { mutableStateOf("") }
@@ -117,7 +118,14 @@ fun viewsearch(
             .take(12)
     }
 
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
+
+    val lifted by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 12
+        }
+    }
 
     val nearEnd by remember {
         derivedStateOf {
@@ -179,14 +187,10 @@ fun viewsearch(
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(glassTokens.bg),
-        ) {
+    scrollhost(
+        scroll = headerScroll,
+        lifted = lifted,
+        header = {
             brandbar {
                 iconbtn(
                     icon = ZIcons.Mic,
@@ -194,148 +198,148 @@ fun viewsearch(
                 )
                 iconbtn(
                     icon = ZIcons.Settings,
-                    showBadge = updateState.hasUpdate,
                     onClick = { onNavigate(Route.Settings) },
                 )
             }
-
-            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                glass(
-                    shape = RoundedCornerShape(999.dp),
-                    elevated = true,
-                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 13.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(
-                            imageVector = ZIcons.Search,
-                            contentDescription = null,
-                            tint = glassTokens.inkSecondary,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Box(modifier = Modifier.weight(1f)) {
-                            if (query.isEmpty()) {
-                                Text(
-                                    text = "Search YouTube Music",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = glassTokens.inkSecondary,
-                                )
-                            }
-                            BasicTextField(
-                                value = query,
-                                onValueChange = {
-                                    query = it
-                                    if (it.isBlank()) submitted = ""
-                                },
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.bodyLarge.copy(color = glassTokens.ink),
-                                cursorBrush = SolidColor(glassTokens.accent),
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                keyboardActions = KeyboardActions(onSearch = { runsearch(query) }),
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                        if (query.isNotEmpty()) {
-                            iconbtn(
-                                icon = ZIcons.Close,
-                                onClick = {
-                                    query = ""
-                                    submitted = ""
-                                    page = SearchPage()
-                                },
-                                size = 28.dp,
-                                iconSize = 15.dp,
-                            )
-                        } else {
-                            iconbtn(
-                                icon = ZIcons.Mic,
-                                onClick = { onNavigate(Route.Recognize) },
-                                size = 30.dp,
-                                iconSize = 18.dp,
-                            )
-                            iconbtn(
-                                icon = ZIcons.Globe,
-                                onClick = { pane = DiscoverPane.EXPLORE },
-                                size = 30.dp,
-                                iconSize = 18.dp,
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (submitted.isNotBlank()) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                ) {
-                    SearchTab.entries.forEach { t ->
-                        chip(
-                            label = t.label,
-                            selected = tab == t,
-                            onClick = { runsearch(submitted, t) },
-                        )
-                    }
-                }
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 6.dp),
-                ) {
-                    DiscoverPane.entries.forEach { item ->
-                        val active = pane == item
-                        val tint = if (active) glassTokens.accent else glassTokens.inkSecondary
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { pane = item }
-                                .padding(top = 8.dp),
-                        ) {
-                            Icon(
-                                imageVector = item.icon,
-                                contentDescription = item.label,
-                                tint = tint,
-                                modifier = Modifier.size(22.dp),
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = item.label,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = tint,
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Box(
-                                modifier = Modifier
-                                    .width(68.dp)
-                                    .height(3.dp)
-                                    .clip(RoundedCornerShape(999.dp))
-                                    .background(if (active) glassTokens.accent else Color.Transparent),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
+        },
+    ) { topInset ->
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(
-                top = 6.dp,
+                top = topInset + 4.dp,
                 bottom = bottomPadding.calculateBottomPadding() + 24.dp,
             ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+            modifier = Modifier.fillMaxSize(),
         ) {
+            item(key = "search_box") {
+                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    glass(
+                        shape = RoundedCornerShape(999.dp),
+                        elevated = true,
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 13.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(
+                                imageVector = ZIcons.Search,
+                                contentDescription = null,
+                                tint = glassTokens.inkSecondary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Box(modifier = Modifier.weight(1f)) {
+                                if (query.isEmpty()) {
+                                    Text(
+                                        text = "Search YouTube Music",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = glassTokens.inkSecondary,
+                                    )
+                                }
+                                BasicTextField(
+                                    value = query,
+                                    onValueChange = {
+                                        query = it
+                                        if (it.isBlank()) submitted = ""
+                                    },
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = glassTokens.ink),
+                                    cursorBrush = SolidColor(glassTokens.accent),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                    keyboardActions = KeyboardActions(onSearch = { runsearch(query) }),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                            if (query.isNotEmpty()) {
+                                iconbtn(
+                                    icon = ZIcons.Close,
+                                    onClick = {
+                                        query = ""
+                                        submitted = ""
+                                        page = SearchPage()
+                                    },
+                                    size = 28.dp,
+                                    iconSize = 15.dp,
+                                )
+                            } else {
+                                iconbtn(
+                                    icon = ZIcons.Mic,
+                                    onClick = { onNavigate(Route.Recognize) },
+                                    size = 30.dp,
+                                    iconSize = 18.dp,
+                                )
+                                iconbtn(
+                                    icon = ZIcons.Globe,
+                                    onClick = { pane = DiscoverPane.EXPLORE },
+                                    size = 30.dp,
+                                    iconSize = 18.dp,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item(key = "search_mode") {
+                if (submitted.isNotBlank()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        SearchTab.entries.forEach { t ->
+                            chip(
+                                label = t.label,
+                                selected = tab == t,
+                                onClick = { runsearch(submitted, t) },
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp, bottom = 4.dp),
+                    ) {
+                        DiscoverPane.entries.forEach { item ->
+                            val active = pane == item
+                            val tint = if (active) glassTokens.accent else glassTokens.inkSecondary
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { pane = item }
+                                    .padding(top = 8.dp),
+                            ) {
+                                Icon(
+                                    imageVector = item.icon,
+                                    contentDescription = item.label,
+                                    tint = tint,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = item.label,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = tint,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .width(68.dp)
+                                        .height(3.dp)
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .background(if (active) glassTokens.accent else Color.Transparent),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             if (submitted.isBlank()) {
                 if (query.isNotBlank() && (suggestions.isNotEmpty() || suggestedItems.isNotEmpty())) {
                     items(suggestions) { sug ->

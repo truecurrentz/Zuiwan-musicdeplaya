@@ -62,7 +62,6 @@ fun viewhome(
     val history by hub.historyTracks.collectAsState()
     val savedArtists by hub.savedArtists.collectAsState()
     val playback by hub.pilot.state.collectAsState()
-    val updateState by hub.updateState.collectAsState()
 
     val headerScroll = headerscroll()
     val listState = rememberLazyListState()
@@ -123,7 +122,6 @@ fun viewhome(
                     )
                     iconbtn(
                         icon = ZIcons.Settings,
-                        showBadge = updateState.hasUpdate,
                         onClick = { onNavigate(Route.Settings) },
                     )
                 }

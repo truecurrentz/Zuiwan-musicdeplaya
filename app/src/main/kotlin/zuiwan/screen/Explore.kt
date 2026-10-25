@@ -64,33 +64,33 @@ fun viewexplore(
     val loading by hub.exploreLoading.collectAsState()
     val playback by hub.pilot.state.collectAsState()
 
+    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
+    val lifted by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 12
+        }
+    }
 
-    Column(
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(glassTokens.bg),
-        ) {
+    scrollhost(
+        scroll = headerScroll,
+        lifted = lifted,
+        header = {
             topbar(title = "Explore") {
                 iconbtn(
                     icon = ZIcons.Refresh,
                     onClick = { hub.refreshexplore() },
                 )
             }
-        }
-
+        },
+    ) { topPad ->
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(
-                top = 6.dp,
+                top = topPad + 6.dp,
                 bottom = bottomPadding.calculateBottomPadding() + 24.dp,
             ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+            modifier = Modifier.fillMaxSize(),
         ) {
             if (loading && explore.releases.isEmpty() && explore.moods.isEmpty()) {
                 item(key = "loader") {

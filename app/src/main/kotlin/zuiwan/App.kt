@@ -11,6 +11,7 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import okhttp3.OkHttpClient
 import zuiwan.state.Hub
+import zuiwan.tube.schedulejob
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -22,6 +23,7 @@ class App : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         hub = Hub(this)
         hub.updater.initchannel()
+        schedulejob(this)
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {

@@ -175,7 +175,6 @@ fun viewlibrary(
     val playback by hub.pilot.state.collectAsState()
     val session by hub.session.collectAsState()
     val syncing by hub.sync.syncing.collectAsState()
-    val updateState by hub.updateState.collectAsState()
 
     var filter by rememberSaveable { mutableStateOf(LibFilter.LIBRARY) }
     var songScope by rememberSaveable { mutableStateOf(SongScope.LIKED) }
@@ -437,7 +436,6 @@ fun viewlibrary(
                 )
                 iconbtn(
                     icon = ZIcons.Settings,
-                    showBadge = updateState.hasUpdate,
                     onClick = { onNavigate(Route.Settings) },
                 )
             }

@@ -1,6 +1,7 @@
 package zuiwan.tube
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -42,7 +43,7 @@ class AppUpdater(
     private val context: Context,
     private val tube: TubeClient,
 ) {
-    private val channelId = "updates"
+    private val channelId = "zuiwan_updates"
     private val notifyId = 1001
     private val cacheWindowMs = 2 * 60 * 60 * 1_000L
     private val verRegex = Regex("""(\d+(?:\.\d+)+(?:-?[A-Za-z0-9.]+)?)""")
@@ -64,10 +65,12 @@ class AppUpdater(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "App Updates",
-                NotificationManager.IMPORTANCE_DEFAULT,
+                "Zuiwan Updates",
+                NotificationManager.IMPORTANCE_HIGH,
             ).apply {
-                description = "Notifications when a new version of Zuiwan is available"
+                description = "Phone notifications when a new Zuiwan release is published"
+                enableVibration(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             val nm = context.getSystemService(NotificationManager::class.java)
             nm?.createNotificationChannel(channel)
@@ -441,7 +444,59 @@ class AppUpdater(
         context.startActivity(intent)
     }
 
-    fun postalert(release: ReleaseNote) {
+    fun postalert(release: ReleaseNote): Boolean {
+        initchannel()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) return false
+        }
+
+        val pFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+
+        val installIntent = Intent(context, Activity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("install_update", true)
+        }
+        val installPending = PendingIntent.getActivity(context, 1002, installIntent, pFlags)
+
+        val firstNotes = release.body
+            .lineSequence()
+            .map { it.trim().removePrefix("- ").removePrefix("* ").removePrefix("#").trim() }
+            .filter { it.isNotBlank() }
+            .take(4)
+            .joinToString("\n")
+        val shortText = firstNotes.lineSequence().firstOrNull()
+            ?: "Tap to install Zuiwan v${release.versionName}"
+        val bigBody = if (firstNotes.isNotBlank()) {
+            firstNotes
+        } else {
+            "Zuiwan v${release.versionName} is available. Tap to install."
+        }
+
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.update)
+            .setContentTitle("Zuiwan v${release.versionName} available")
+            .setContentText(shortText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigBody))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setContentIntent(installPending)
+            .setAutoCancel(true)
+            .addAction(0, "Update", installPending)
+            .build()
+
+        return runCatching {
+            NotificationManagerCompat.from(context).notify(notifyId, notification)
+            true
+        }.getOrDefault(false)
+    }
+
+    fun postprogress(release: ReleaseNote, progress: Float) {
         initchannel()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
@@ -451,38 +506,15 @@ class AppUpdater(
             if (!granted) return
         }
 
-        val pFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-
-        val openIntent = Intent(context, Activity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("open_update", true)
-        }
-        val openPending = PendingIntent.getActivity(context, 1001, openIntent, pFlags)
-
-        val installIntent = Intent(context, Activity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("install_update", true)
-        }
-        val installPending = PendingIntent.getActivity(context, 1002, installIntent, pFlags)
-
-        val headline = "Zuiwan ${release.versionName} is ready to update"
-        val firstNotes = release.body
-            .lineSequence()
-            .map { it.trim().removePrefix("- ").removePrefix("* ").removePrefix("#").trim() }
-            .filter { it.isNotBlank() }
-            .take(3)
-            .joinToString("\n")
-        val bigBody = if (firstNotes.isNotBlank()) "$headline\n\n$firstNotes" else headline
-
+        val pct = (progress * 100f).toInt().coerceIn(0, 100)
         val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.icon)
-            .setContentTitle("Update available")
-            .setContentText(headline)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(bigBody))
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(openPending)
-            .setAutoCancel(true)
-            .addAction(0, "Update", installPending)
+            .setSmallIcon(R.drawable.update)
+            .setContentTitle("Updating Zuiwan v${release.versionName}")
+            .setContentText("Downloading update ($pct%)")
+            .setProgress(100, pct, false)
+            .setOnlyAlertOnce(true)
+            .setOngoing(pct < 100)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
 
         runCatching {
