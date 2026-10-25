@@ -4,10 +4,8 @@
 
 # Zuiwan
 
-### Frosted Glass YouTube Music client for Android
-
-[![Build](https://img.shields.io/github/actions/workflow/status/truecurrentz/Zuiwan/build.yml?style=for-the-badge&labelColor=0d1117)](https://github.com/truecurrentz/Zuiwan/actions/workflows/build.yml)
-[![License](https://img.shields.io/github/license/truecurrentz/Zuiwan?style=for-the-badge&labelColor=0d1117)](LICENSE)
+[![Build](https://img.shields.io/github/actions/workflow/status/truecurrentz/Zuiwan-musicdeplaya/build.yml?style=for-the-badge&labelColor=0d1117)](https://github.com/truecurrentz/Zuiwan-musicdeplaya/actions/workflows/build.yml)
+[![License](https://img.shields.io/github/license/truecurrentz/Zuiwan-musicdeplaya?style=for-the-badge&labelColor=0d1117)](LICENSE)
 
 [**Download**](#download) | [**Features**](#features) | [**Build**](#build) | [**License**](#license)
 
@@ -70,7 +68,7 @@
 
 ## Download
 
-Grab the latest `Zuiwan.apk` from [**GitHub Actions Artifacts**](https://github.com/truecurrentz/Zuiwan/actions) or [**Releases**](https://github.com/truecurrentz/Zuiwan/releases).
+Grab the latest `Zuiwan.apk` from [**Releases**](https://github.com/truecurrentz/Zuiwan-musicdeplaya/releases) or [**GitHub Actions Artifacts**](https://github.com/truecurrentz/Zuiwan-musicdeplaya/actions).
 
 ---
 
@@ -79,8 +77,8 @@ Grab the latest `Zuiwan.apk` from [**GitHub Actions Artifacts**](https://github.
 Requires **JDK 21** and the **Android SDK (API 36/37)**.
 
 ```bash
-git clone https://github.com/truecurrentz/Zuiwan.git
-cd Zuiwan
+git clone https://github.com/truecurrentz/Zuiwan-musicdeplaya.git
+cd Zuiwan-musicdeplaya
 ./gradlew assembleRelease
 ```
 

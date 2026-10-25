@@ -32,7 +32,7 @@ android {
         vectorDrawables.useSupportLibrary = true
         buildConfigField("String", "GIT_SHA", "\"$currentGitSha\"")
         buildConfigField("long", "BUILD_TIME_MS", "${System.currentTimeMillis()}L")
-        buildConfigField("String", "GITHUB_REPO", "\"truecurrentz/Zuiwan\"")
+        buildConfigField("String", "GITHUB_REPO", "\"truecurrentz/Zuiwan-musicdeplaya\"")
     }
 
     signingConfigs {

@@ -34,7 +34,7 @@ class LrclibSource(private val http: HttpClient) {
         val cleanArtist = artist.substringBefore(",").substringBefore("&").trim()
 
         val exactRes = http.get("https://lrclib.net/api/get") {
-            header("User-Agent", "Zuiwan/1.0.0 (https://github.com/truecurrentz/Zuiwan)")
+            header("User-Agent", "Zuiwan/1.0.0 (https://github.com/truecurrentz/Zuiwan-musicdeplaya)")
             parameter("track_name", cleanTitle)
             parameter("artist_name", cleanArtist)
             if (!album.isNullOrBlank()) parameter("album_name", album)
@@ -69,7 +69,7 @@ class LrclibSource(private val http: HttpClient) {
 
     suspend fun searchlrclib(query: String): Result<List<LrclibEntry>> = runCatching {
         val res = http.get("https://lrclib.net/api/search") {
-            header("User-Agent", "Zuiwan/1.0.0 (https://github.com/truecurrentz/Zuiwan)")
+            header("User-Agent", "Zuiwan/1.0.0 (https://github.com/truecurrentz/Zuiwan-musicdeplaya)")
             parameter("q", query)
         }
         if (!res.status.isSuccess()) return@runCatching emptyList()

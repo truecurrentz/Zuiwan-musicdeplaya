@@ -64,9 +64,17 @@ class AppUpdater(
         }
     }
 
+    private val verRegex = Regex("""(\d+(?:\.\d+)+(?:-?[A-Za-z0-9.]+)?)""")
+
+    private fun extractver(raw: String): String {
+        val trimmed = raw.trim()
+        val found = verRegex.find(trimmed)?.groupValues?.getOrNull(1)
+        return (found ?: trimmed.removePrefix("v").removePrefix("V")).trim()
+    }
+
     fun comparever(v1: String, v2: String): Int {
-        val clean1 = v1.trim().removePrefix("v").removePrefix("V")
-        val clean2 = v2.trim().removePrefix("v").removePrefix("V")
+        val clean1 = extractver(v1)
+        val clean2 = extractver(v2)
         val base1 = clean1.substringBefore("-")
         val base2 = clean2.substringBefore("-")
         val parts1 = base1.split(".").map { it.toIntOrNull() ?: 0 }
@@ -222,8 +230,7 @@ class AppUpdater(
     }
 
     private fun maprelease(rel: GhRelease): ReleaseNote {
-        val rawVer = rel.tagName.trim().removePrefix("v").removePrefix("V")
-            .ifBlank { rel.name.trim().removePrefix("v").removePrefix("V") }
+        val rawVer = extractver(rel.tagName).ifBlank { extractver(rel.name) }
         val apkAssets = rel.assets.filter {
             it.name.endsWith(".apk", ignoreCase = true) && it.downloadUrl.isNotBlank()
         }
