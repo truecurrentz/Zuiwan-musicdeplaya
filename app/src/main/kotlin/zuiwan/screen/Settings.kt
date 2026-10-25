@@ -1,9 +1,14 @@
 package zuiwan.screen
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import app.zuiwan.BuildConfig
 import app.zuiwan.R
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -30,6 +35,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -55,6 +61,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -64,7 +72,9 @@ import kotlinx.coroutines.launch
 import zuiwan.model.NoticeKind
 import zuiwan.model.QualityMode
 import zuiwan.model.ThemeChoice
+import zuiwan.sheet.changelogsheet
 import zuiwan.sheet.importsheet
+import zuiwan.sheet.notebody
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
 import zuiwan.ui.artimage
@@ -83,6 +93,7 @@ private enum class SettingsPage(val title: String) {
     AUDIO("Player & Audio"),
     CONTENT("Content & Privacy"),
     STORAGE("Storage & Backup"),
+    UPDATER("App Updates"),
     ABOUT("About"),
 }
 
@@ -124,6 +135,8 @@ fun viewsettings(
 ) {
     val hub = LocalHub.current
     val glassTokens = LocalGlass.current
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
 
     val settings by hub.settings.collectAsState()
@@ -131,6 +144,7 @@ fun viewsettings(
     val syncing by hub.sync.syncing.collectAsState()
     val eqProfile by hub.eq.collectAsState()
     val downloadedTracks by hub.downloadedTracks.collectAsState()
+    val updateState by hub.updateState.collectAsState()
 
     var page by rememberSaveable { mutableStateOf(SettingsPage.MAIN) }
 
@@ -142,6 +156,19 @@ fun viewsettings(
     var showCountryDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showImportSheet by remember { mutableStateOf(false) }
+    var showChangelogSheet by remember { mutableStateOf(false) }
+
+    val notifPermLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted) {
+            hub.shownotice(
+                NoticeKind.INFO,
+                "Notification Permission",
+                "Allow notifications in system settings to receive update alerts",
+            )
+        }
+    }
 
     val headerScroll = headerscroll()
 
@@ -182,6 +209,15 @@ fun viewsettings(
             onImported = { newId ->
                 onNavigate(Route.Playlist(newId, local = true))
             },
+        )
+    }
+
+    if (showChangelogSheet) {
+        changelogsheet(
+            releases = updateState.releases,
+            loading = updateState.checking && updateState.releases.isEmpty(),
+            onRefresh = { hub.loadchangelog(force = true) },
+            onDismiss = { showChangelogSheet = false },
         )
     }
 
@@ -473,6 +509,30 @@ fun viewsettings(
                                     position = GroupPos.MIDDLE,
                                     onClick = { onNavigate(Route.Equalizer) },
                                 )
+                                val updSub = when {
+                                    updateState.checking -> "Checking for updates..."
+                                    updateState.hasUpdate && updateState.latest != null ->
+                                        "New version v${updateState.latest!!.versionName} available"
+                                    else -> "Check for updates & notifications"
+                                }
+                                navitem(
+                                    icon = ZIcons.Update,
+                                    title = "App Updates",
+                                    subtitle = updSub,
+                                    position = GroupPos.MIDDLE,
+                                    showBadge = updateState.hasUpdate,
+                                    onClick = { page = SettingsPage.UPDATER },
+                                )
+                                navitem(
+                                    icon = ZIcons.Notes,
+                                    title = "Changelog",
+                                    subtitle = "Release notes & version history",
+                                    position = GroupPos.MIDDLE,
+                                    onClick = {
+                                        hub.loadchangelog()
+                                        showChangelogSheet = true
+                                    },
+                                )
                                 navitem(
                                     icon = ZIcons.Info,
                                     title = "About Zuiwan",
@@ -480,6 +540,83 @@ fun viewsettings(
                                     position = GroupPos.BOTTOM,
                                     onClick = { page = SettingsPage.ABOUT },
                                 )
+                            }
+                        }
+
+                        val readyRelease = updateState.latest?.takeIf { updateState.hasUpdate }
+                        if (readyRelease != null) {
+                            item(key = "update_banner") {
+                                grouptitle("New Version Available")
+                                glass(
+                                    shape = RoundedCornerShape(24.dp),
+                                    elevated = true,
+                                    accented = true,
+                                    contentPadding = PaddingValues(18.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 18.dp, vertical = 4.dp),
+                                ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier
+                                                    .size(42.dp)
+                                                    .clip(CircleShape)
+                                                    .background(glassTokens.accentSoft),
+                                            ) {
+                                                Icon(
+                                                    imageVector = ZIcons.Update,
+                                                    contentDescription = null,
+                                                    tint = glassTokens.accent,
+                                                    modifier = Modifier.size(21.dp),
+                                                )
+                                            }
+                                            Spacer(Modifier.width(12.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "Zuiwan v${readyRelease.versionName}",
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = glassTokens.ink,
+                                                )
+                                                Text(
+                                                    text = readyRelease.publishedAt.substringBefore("T")
+                                                        .ifBlank { "Ready to install" },
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = glassTokens.inkSecondary,
+                                                )
+                                            }
+                                        }
+
+                                        if (readyRelease.body.isNotBlank()) {
+                                            notebody(
+                                                raw = readyRelease.body.lines().take(5).joinToString("\n"),
+                                            )
+                                        }
+
+                                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            pillbtn(
+                                                text = "Download",
+                                                icon = ZIcons.Download,
+                                                primary = true,
+                                                onClick = {
+                                                    runCatching { uriHandler.openUri(readyRelease.downloadUrl) }
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            pillbtn(
+                                                text = "Release Notes",
+                                                icon = ZIcons.Notes,
+                                                onClick = { hub.openupdate() },
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -833,6 +970,254 @@ fun viewsettings(
                         }
                     }
 
+                    SettingsPage.UPDATER -> {
+                        item(key = "updater_current") {
+                            grouptitle("Current Version")
+                            groupbox {
+                                glass(
+                                    shape = groupshape(GroupPos.SINGLE),
+                                    elevated = true,
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 15.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(glassTokens.accentSoft),
+                                        ) {
+                                            Icon(
+                                                imageVector = ZIcons.Info,
+                                                contentDescription = null,
+                                                tint = glassTokens.accent,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                        Spacer(Modifier.width(14.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Version ${BuildConfig.VERSION_NAME}",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = glassTokens.ink,
+                                            )
+                                            val buildLabel = if (BuildConfig.DEBUG) "Debug" else "Release"
+                                            Text(
+                                                text = "$buildLabel · Build ${BuildConfig.GIT_SHA}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = glassTokens.inkSecondary,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        item(key = "updater_prefs") {
+                            grouptitle("Update Settings")
+                            groupbox {
+                                switchitem(
+                                    icon = ZIcons.Update,
+                                    title = "Check for updates",
+                                    subtitle = "Automatically check GitHub when Zuiwan opens",
+                                    checked = settings.checkUpdates,
+                                    position = if (settings.checkUpdates) GroupPos.TOP else GroupPos.SINGLE,
+                                    onToggle = { enabled ->
+                                        scope.launch {
+                                            hub.store.updatesettings { it.copy(checkUpdates = enabled) }
+                                            if (enabled) {
+                                                hub.runupdater(force = true, manual = false)
+                                            } else {
+                                                hub.updater.clearalert()
+                                            }
+                                        }
+                                    },
+                                )
+                                if (settings.checkUpdates) {
+                                    switchitem(
+                                        icon = ZIcons.Bell,
+                                        title = "Update notifications",
+                                        subtitle = "Notify when a new Zuiwan update arrives",
+                                        checked = settings.updateNotifications,
+                                        position = GroupPos.MIDDLE,
+                                        onToggle = { enabled ->
+                                            if (enabled &&
+                                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                                ContextCompat.checkSelfPermission(
+                                                    context,
+                                                    Manifest.permission.POST_NOTIFICATIONS,
+                                                ) != PackageManager.PERMISSION_GRANTED
+                                            ) {
+                                                notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                            }
+                                            scope.launch {
+                                                hub.store.updatesettings { it.copy(updateNotifications = enabled) }
+                                                if (!enabled) hub.updater.clearalert()
+                                            }
+                                        },
+                                    )
+                                    switchitem(
+                                        icon = ZIcons.Sparkles,
+                                        title = "Include nightly builds",
+                                        subtitle = "Also check pre-releases & newer CI builds",
+                                        checked = settings.nightlyUpdates,
+                                        position = GroupPos.BOTTOM,
+                                        onToggle = { enabled ->
+                                            scope.launch {
+                                                hub.store.updatesettings { it.copy(nightlyUpdates = enabled) }
+                                                hub.runupdater(force = true, manual = false)
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                        }
+
+                        item(key = "updater_actions") {
+                            grouptitle("Check & History")
+                            groupbox {
+                                val checkTitle = when {
+                                    updateState.checking -> "Checking for updates..."
+                                    updateState.hasUpdate && updateState.latest != null ->
+                                        "Latest version: v${updateState.latest!!.versionName}"
+                                    updateState.lastCheckedAt > 0L ->
+                                        "Up to date · v${BuildConfig.VERSION_NAME}"
+                                    else -> "Check for updates"
+                                }
+                                val checkSub = when {
+                                    updateState.error != null -> updateState.error!!
+                                    updateState.hasUpdate -> "Tap to view release notes & download"
+                                    else -> "Tap to check GitHub releases now"
+                                }
+                                glass(
+                                    shape = groupshape(GroupPos.TOP),
+                                    elevated = true,
+                                    onClick = {
+                                        if (!updateState.checking) {
+                                            if (updateState.hasUpdate && updateState.latest != null) {
+                                                hub.openupdate()
+                                            } else {
+                                                hub.runupdater(force = true, manual = true)
+                                            }
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(glassTokens.accentSoft),
+                                        ) {
+                                            if (updateState.checking) {
+                                                CircularProgressIndicator(
+                                                    color = glassTokens.accent,
+                                                    strokeWidth = 2.dp,
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = ZIcons.Refresh,
+                                                    contentDescription = null,
+                                                    tint = glassTokens.accent,
+                                                    modifier = Modifier.size(20.dp),
+                                                )
+                                            }
+                                        }
+                                        Spacer(Modifier.width(14.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = checkTitle,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = glassTokens.ink,
+                                            )
+                                            Text(
+                                                text = checkSub,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = if (updateState.error != null) {
+                                                    glassTokens.danger
+                                                } else {
+                                                    glassTokens.inkSecondary
+                                                },
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                        if (updateState.hasUpdate) {
+                                            Icon(
+                                                imageVector = ZIcons.Download,
+                                                contentDescription = null,
+                                                tint = glassTokens.accent,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                    }
+                                }
+
+                                navitem(
+                                    icon = ZIcons.Notes,
+                                    title = "Changelog",
+                                    subtitle = "View release notes on Zuiwan & GitHub",
+                                    position = GroupPos.BOTTOM,
+                                    onClick = {
+                                        hub.loadchangelog()
+                                        showChangelogSheet = true
+                                    },
+                                )
+                            }
+                        }
+
+                        val found = updateState.latest?.takeIf { updateState.hasUpdate }
+                        if (found != null) {
+                            item(key = "updater_notes_card") {
+                                grouptitle("Release Notes")
+                                glass(
+                                    shape = RoundedCornerShape(24.dp),
+                                    elevated = true,
+                                    contentPadding = PaddingValues(18.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 18.dp, vertical = 4.dp),
+                                ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Text(
+                                            text = found.title.ifBlank { "Zuiwan v${found.versionName}" },
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = glassTokens.ink,
+                                        )
+                                        notebody(
+                                            raw = found.body.ifBlank {
+                                                "New improvements and fixes ready to install."
+                                            },
+                                        )
+                                        pillbtn(
+                                            text = "Download v${found.versionName}",
+                                            icon = ZIcons.Download,
+                                            primary = true,
+                                            onClick = {
+                                                runCatching { uriHandler.openUri(found.downloadUrl) }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     SettingsPage.ABOUT -> {
                         item(key = "about_hero") {
                             glass(
@@ -928,6 +1313,7 @@ private fun navitem(
     title: String,
     subtitle: String,
     position: GroupPos,
+    showBadge: Boolean = false,
     onClick: () -> Unit,
 ) {
     val glassTokens = LocalGlass.current
@@ -958,12 +1344,25 @@ private fun navitem(
             }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = glassTokens.ink,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = glassTokens.ink,
+                    )
+                    if (showBadge) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(glassTokens.accent),
+                        )
+                    }
+                }
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,

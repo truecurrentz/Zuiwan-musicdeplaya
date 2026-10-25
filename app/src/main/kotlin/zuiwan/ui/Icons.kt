@@ -971,4 +971,58 @@ object ZIcons {
         moveTo(19f, 9.8f)
         arcTo(7.5f, 7.5f, 0f, true, false, 18.5f, 16.2f)
     }
+
+    val Bell: ImageVector = stroke("Bell") {
+        moveTo(18f, 9.5f)
+        arcTo(6f, 6f, 0f, false, false, 6f, 9.5f)
+        curveTo(6f, 14f, 4.2f, 15.8f, 4.2f, 16.8f)
+        horizontalLineTo(19.8f)
+        curveTo(19.8f, 15.8f, 18f, 14f, 18f, 9.5f)
+        close()
+        moveTo(10f, 17.2f)
+        arcTo(2.2f, 2.2f, 0f, false, false, 14f, 17.2f)
+    }
+
+    val Update: ImageVector = stroke("Update") {
+        moveTo(12f, 3.8f)
+        arcTo(8.2f, 8.2f, 0f, true, true, 11.99f, 3.8f)
+        close()
+        moveTo(12f, 8.2f)
+        verticalLineTo(15.2f)
+        moveTo(9.2f, 12.6f)
+        lineTo(12f, 15.5f)
+        lineTo(14.8f, 12.6f)
+    }
+
+    val Notes: ImageVector = stroke("Notes") {
+        moveTo(6f, 4.2f)
+        horizontalLineTo(15.2f)
+        lineTo(19f, 8f)
+        verticalLineTo(19.8f)
+        horizontalLineTo(6f)
+        close()
+        moveTo(14.8f, 4.2f)
+        verticalLineTo(8.4f)
+        horizontalLineTo(19f)
+        moveTo(9f, 12f)
+        horizontalLineTo(16f)
+        moveTo(9f, 15.5f)
+        horizontalLineTo(14f)
+    }
+
+    val External: ImageVector = stroke("External") {
+        moveTo(14f, 4.5f)
+        horizontalLineTo(19.5f)
+        verticalLineTo(10f)
+        moveTo(19.2f, 4.8f)
+        lineTo(10.5f, 13.5f)
+        moveTo(19f, 13.8f)
+        verticalLineTo(18.5f)
+        curveTo(19f, 19.1f, 18.6f, 19.5f, 18f, 19.5f)
+        horizontalLineTo(5.5f)
+        curveTo(4.9f, 19.5f, 4.5f, 19.1f, 4.5f, 18.5f)
+        verticalLineTo(6f)
+        curveTo(4.5f, 5.4f, 4.9f, 5f, 5.5f, 5f)
+        horizontalLineTo(10.2f)
+    }
 }

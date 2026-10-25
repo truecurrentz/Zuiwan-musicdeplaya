@@ -6,6 +6,7 @@ enum class NoticeKind {
     SUCCESS,
     ERROR,
     INFO,
+    UPDATE,
 }
 
 data class NoticeState(
@@ -15,4 +16,6 @@ data class NoticeState(
     val subtitle: String = "",
     val progress: Float? = null,
     val visible: Boolean = false,
+    val actionLabel: String = "",
+    val onAction: (() -> Unit)? = null,
 )

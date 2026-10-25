@@ -1,12 +1,18 @@
 package zuiwan
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -34,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
@@ -57,6 +64,7 @@ import zuiwan.screen.viewstats
 import zuiwan.sheet.pickersheet
 import zuiwan.sheet.infosheet
 import zuiwan.sheet.menusheet
+import zuiwan.sheet.updatesheet
 import zuiwan.state.Hub
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalHaze
@@ -70,6 +78,7 @@ import zuiwan.ui.Route
 
 class Activity : ComponentActivity() {
     private var incomingUrl by mutableStateOf<String?>(null)
+    private var openUpdateReq by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,6 +87,7 @@ class Activity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.auto(Color.Transparent.toArgb(), Color.Transparent.toArgb()),
         )
         incomingUrl = intent?.dataString
+        openUpdateReq = intent?.getBooleanExtra("open_update", false) == true
         val hub = (application as App).hub
 
         setContent {
@@ -86,6 +96,8 @@ class Activity : ComponentActivity() {
                     hub = hub,
                     deepLink = incomingUrl,
                     onDeepLinkConsumed = { incomingUrl = null },
+                    openUpdate = openUpdateReq,
+                    onOpenUpdateConsumed = { openUpdateReq = false },
                 )
             }
         }
@@ -94,6 +106,9 @@ class Activity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         incomingUrl = intent.dataString
+        if (intent.getBooleanExtra("open_update", false)) {
+            openUpdateReq = true
+        }
     }
 }
 
@@ -102,11 +117,15 @@ private fun rootview(
     hub: Hub,
     deepLink: String?,
     onDeepLinkConsumed: () -> Unit,
+    openUpdate: Boolean,
+    onOpenUpdateConsumed: () -> Unit,
 ) {
+    val context = LocalContext.current
     val settings by hub.settings.collectAsState()
     val playback by hub.pilot.state.collectAsState()
     val likedIds by hub.likedIds.collectAsState()
     val notice by hub.notice.collectAsState()
+    val updatePrompt by hub.updatePrompt.collectAsState()
 
     val nav = remember { NavStack() }
     val stateHolder = rememberSaveableStateHolder()
@@ -116,6 +135,44 @@ private fun rootview(
     var menuTrack by remember { mutableStateOf<Track?>(null) }
     var playlistTrack by remember { mutableStateOf<Track?>(null) }
     var infoTrack by remember { mutableStateOf<Track?>(null) }
+    var permAsked by remember { mutableStateOf(false) }
+
+    val notifPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        hub.runupdater(force = false, manual = false)
+    }
+
+    LaunchedEffect(settings.checkUpdates, settings.nightlyUpdates) {
+        if (!settings.checkUpdates) {
+            hub.runupdater(force = false, manual = false)
+            return@LaunchedEffect
+        }
+        if (!permAsked &&
+            settings.updateNotifications &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            permAsked = true
+            notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            hub.runupdater(force = false, manual = false)
+        }
+    }
+
+    LaunchedEffect(openUpdate) {
+        if (openUpdate) {
+            onOpenUpdateConsumed()
+            playerExpanded = false
+            if (hub.updateState.value.latest != null) {
+                hub.openupdate()
+            } else {
+                nav.open(Route.Settings)
+                hub.runupdater(force = true, manual = true)
+            }
+        }
+    }
 
     LaunchedEffect(deepLink) {
         val url = deepLink ?: return@LaunchedEffect
@@ -337,6 +394,14 @@ private fun rootview(
                     infosheet(
                         track = target,
                         onDismiss = { infoTrack = null },
+                    )
+                }
+
+                updatePrompt?.let { target ->
+                    updatesheet(
+                        release = target,
+                        onDismiss = { hub.hideupdate(rememberTag = false) },
+                        onLater = { hub.hideupdate(rememberTag = true) },
                     )
                 }
 

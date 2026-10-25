@@ -420,6 +420,7 @@ fun iconbtn(
     active: Boolean = false,
     solidAccent: Boolean = false,
     softFill: Boolean = false,
+    showBadge: Boolean = false,
     tint: Color? = null,
 ) {
     val glassTokens = LocalGlass.current
@@ -456,6 +457,16 @@ fun iconbtn(
                     tint = tint ?: if (active) glassTokens.accent else glassTokens.ink,
                     modifier = Modifier.size(iconSize),
                 )
+                if (showBadge) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 6.dp, end = 6.dp)
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(glassTokens.accent),
+                    )
+                }
             }
         }
         else -> {
@@ -472,6 +483,16 @@ fun iconbtn(
                     tint = tint ?: if (active) glassTokens.accent else glassTokens.ink,
                     modifier = Modifier.size(iconSize),
                 )
+                if (showBadge) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 7.dp, end = 7.dp)
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(glassTokens.accent),
+                    )
+                }
             }
         }
     }

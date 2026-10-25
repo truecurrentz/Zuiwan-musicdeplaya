@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -50,13 +51,17 @@ import zuiwan.model.NoticeKind
 import zuiwan.model.NoticeState
 import zuiwan.model.PlaylistDetail
 import zuiwan.model.PlaylistSummary
+import zuiwan.model.ReleaseNote
 import zuiwan.model.SessionData
 import zuiwan.model.StatsSummary
 import zuiwan.model.StatsWindow
 import zuiwan.model.Track
 import zuiwan.model.TrackStat
+import zuiwan.model.UpdateStatus
 import zuiwan.model.trackart
 import zuiwan.model.upscaleart
+import app.zuiwan.BuildConfig
+import zuiwan.tube.AppUpdater
 import zuiwan.tube.CloudSync
 import zuiwan.tube.DraftSong
 import zuiwan.tube.ExportKind
@@ -80,8 +85,15 @@ class Hub(val appContext: Context) {
     val sync: CloudSync = CloudSync(dao, tube)
     val transfer: PlaylistTransfer = PlaylistTransfer(appContext, dao, tube, sync)
     val recognizer: MusicRecognizer = MusicRecognizer(appContext, dao, tube)
+    val updater: AppUpdater = AppUpdater(appContext, tube)
     val streams: StreamEngine = StreamEngine(appContext) { tube.innerTube }
     val lyrics: LyricsExtractor = LyricsExtractor(dao, tube)
+
+    private val updateStateFlow = MutableStateFlow(UpdateStatus())
+    val updateState: StateFlow<UpdateStatus> = updateStateFlow.asStateFlow()
+
+    private val updatePromptFlow = MutableStateFlow<ReleaseNote?>(null)
+    val updatePrompt: StateFlow<ReleaseNote?> = updatePromptFlow.asStateFlow()
 
     private val noticeFlow = MutableStateFlow(NoticeState())
     val notice: StateFlow<NoticeState> = noticeFlow.asStateFlow()
@@ -704,6 +716,8 @@ class Hub(val appContext: Context) {
         title: String,
         subtitle: String = "",
         progress: Float? = null,
+        actionLabel: String = "",
+        onAction: (() -> Unit)? = null,
     ) {
         noticeHideJob?.cancel()
         val id = System.nanoTime()
@@ -714,10 +728,13 @@ class Hub(val appContext: Context) {
             subtitle = subtitle,
             progress = progress,
             visible = true,
+            actionLabel = actionLabel,
+            onAction = onAction,
         )
         if (kind != NoticeKind.SYNC && kind != NoticeKind.LOADING) {
+            val holdMs = if (kind == NoticeKind.UPDATE) 5_800L else 3_300L
             noticeHideJob = scope.launch {
-                delay(3_300L)
+                delay(holdMs)
                 if (noticeFlow.value.id == id) {
                     noticeFlow.value = noticeFlow.value.copy(visible = false)
                 }
@@ -823,6 +840,131 @@ class Hub(val appContext: Context) {
             store.updatesession { SessionData() }
             tube.applysession(SessionData())
             shownotice(NoticeKind.INFO, "Signed Out", "YouTube Music disconnected")
+        }
+    }
+
+    fun openupdate() {
+        val target = updateStateFlow.value.latest ?: return
+        updatePromptFlow.value = target
+    }
+
+    fun hideupdate(rememberTag: Boolean = false) {
+        val current = updatePromptFlow.value
+        updatePromptFlow.value = null
+        if (rememberTag && current != null) {
+            scope.launch {
+                store.updatesettings { it.copy(dismissedUpdateTag = current.tagName) }
+            }
+        }
+    }
+
+    fun loadchangelog(force: Boolean = false) {
+        scope.launch {
+            val curSettings = settings.value
+            val res = updater.loadreleases(
+                force = force,
+                includePre = curSettings.nightlyUpdates,
+            )
+            res.onSuccess { list ->
+                updateStateFlow.value = updateStateFlow.value.copy(
+                    releases = list,
+                    error = null,
+                )
+            }
+        }
+    }
+
+    fun runupdater(force: Boolean = false, manual: Boolean = false) {
+        if (updateStateFlow.value.checking) return
+        scope.launch {
+            val curSettings = runCatching { store.settings.first() }.getOrElse { settings.value }
+
+            if (!manual && !curSettings.checkUpdates) {
+                updateStateFlow.value = updateStateFlow.value.copy(
+                    checking = false,
+                    hasUpdate = false,
+                )
+                updatePromptFlow.value = null
+                updater.clearalert()
+                return@launch
+            }
+
+            updateStateFlow.value = updateStateFlow.value.copy(checking = true, error = null)
+            if (manual) {
+                shownotice(NoticeKind.LOADING, "Checking for Updates", "Contacting GitHub releases")
+            }
+
+            val result = updater.checkupdate(
+                force = force || manual,
+                includeNightly = curSettings.nightlyUpdates,
+            )
+
+            result.onSuccess { (release, hasNew) ->
+                val list = updater.loadreleases(
+                    force = false,
+                    includePre = curSettings.nightlyUpdates,
+                ).getOrDefault(emptyList())
+
+                updateStateFlow.value = UpdateStatus(
+                    checking = false,
+                    hasUpdate = hasNew && release != null,
+                    latest = release,
+                    releases = list,
+                    lastCheckedAt = System.currentTimeMillis(),
+                    error = null,
+                )
+
+                if (hasNew && release != null) {
+                    if (manual) {
+                        shownotice(
+                            kind = NoticeKind.UPDATE,
+                            title = "Update Available",
+                            subtitle = "Zuiwan v${release.versionName} is ready",
+                            actionLabel = "View",
+                            onAction = { openupdate() },
+                        )
+                        updatePromptFlow.value = release
+                    } else {
+                        if (release.tagName != curSettings.dismissedUpdateTag) {
+                            updatePromptFlow.value = release
+                        }
+                        if (curSettings.updateNotifications && release.tagName != curSettings.lastNotifiedTag) {
+                            updater.postalert(release)
+                            shownotice(
+                                kind = NoticeKind.UPDATE,
+                                title = "New Update Available",
+                                subtitle = "Zuiwan v${release.versionName} · Tap to view",
+                                actionLabel = "Update",
+                                onAction = { openupdate() },
+                            )
+                            store.updatesettings { it.copy(lastNotifiedTag = release.tagName) }
+                        }
+                    }
+                } else {
+                    updatePromptFlow.value = null
+                    updater.clearalert()
+                    if (manual) {
+                        shownotice(
+                            kind = NoticeKind.SUCCESS,
+                            title = "Zuiwan is Up to Date",
+                            subtitle = "Running v${BuildConfig.VERSION_NAME}",
+                        )
+                    }
+                }
+            }.onFailure { err ->
+                val msg = err.message ?: "Unable to check for updates"
+                updateStateFlow.value = updateStateFlow.value.copy(
+                    checking = false,
+                    error = msg,
+                )
+                if (manual) {
+                    shownotice(
+                        kind = NoticeKind.ERROR,
+                        title = "Update Check Failed",
+                        subtitle = msg,
+                    )
+                }
+            }
         }
     }
 }

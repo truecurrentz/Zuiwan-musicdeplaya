@@ -21,6 +21,7 @@ class App : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         hub = Hub(this)
+        hub.updater.initchannel()
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {

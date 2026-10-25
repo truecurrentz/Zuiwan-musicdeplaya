@@ -1,6 +1,16 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 val releaseKeystoreFile = file("keystore/release.jks")
+val currentGitSha: String =
+    runCatching {
+        providers
+            .exec { commandLine("git", "rev-parse", "--short=7", "HEAD") }
+            .standardOutput
+            .asText
+            .get()
+            .trim()
+            .ifBlank { "local" }
+    }.getOrDefault("local")
 
 plugins {
     id("com.android.application")
@@ -20,6 +30,9 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         vectorDrawables.useSupportLibrary = true
+        buildConfigField("String", "GIT_SHA", "\"$currentGitSha\"")
+        buildConfigField("long", "BUILD_TIME_MS", "${System.currentTimeMillis()}L")
+        buildConfigField("String", "GITHUB_REPO", "\"truecurrentz/Zuiwan\"")
     }
 
     signingConfigs {

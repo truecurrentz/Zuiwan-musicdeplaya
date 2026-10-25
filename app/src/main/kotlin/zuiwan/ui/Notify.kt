@@ -108,10 +108,15 @@ fun liveisland(
                 shape = shape,
                 strong = true,
                 frosted = true,
-                onClick = if (notice.kind != NoticeKind.SYNC && notice.kind != NoticeKind.LOADING) {
-                    onDismiss
-                } else {
-                    null
+                onClick = when {
+                    notice.onAction != null -> {
+                        {
+                            notice.onAction.invoke()
+                            onDismiss()
+                        }
+                    }
+                    notice.kind != NoticeKind.SYNC && notice.kind != NoticeKind.LOADING -> onDismiss
+                    else -> null
                 },
                 contentPadding = PaddingValues(horizontal = 15.dp, vertical = 11.dp),
                 modifier = Modifier
@@ -185,6 +190,22 @@ fun liveisland(
                                 ),
                                 color = glassTokens.accent,
                             )
+                        } else if (notice.actionLabel.isNotBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(glassTokens.accentSoft)
+                                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                            ) {
+                                Text(
+                                    text = notice.actionLabel,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                    ),
+                                    color = glassTokens.accent,
+                                )
+                            }
                         }
                     }
 
@@ -382,6 +403,28 @@ private fun noticeorb(
                     contentDescription = null,
                     tint = glassTokens.accent,
                     modifier = Modifier.size(15.dp),
+                )
+            }
+        }
+
+        NoticeKind.UPDATE -> {
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .scale(pulse)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(glassTokens.accent, glassTokens.accentSecondary),
+                        ),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = ZIcons.Update,
+                    contentDescription = null,
+                    tint = glassTokens.onAccent,
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }

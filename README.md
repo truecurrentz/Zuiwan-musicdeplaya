@@ -60,6 +60,7 @@
 - Real-time GPU backdrop blur on connected floating bars and immersive full-bleed player
 - Full **YouTube Music Sync** (liked songs, playlists, albums, artists & synced playlist creation)
 - Universal **Playlist Import & Export** (`.csv`, `.m3u`/`.m3u8`, `.json`, `.pls`, `.xspf`, `.txt`, YouTube & Spotify links) + `.zip` backup/restore
+- Automatic **App Update Notifications** with changelog viewer & direct APK downloads
 
 </td>
   </tr>

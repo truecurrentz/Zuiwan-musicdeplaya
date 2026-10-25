@@ -35,6 +35,11 @@ data class AppSettings(
     val romanizeLyrics: Boolean = true,
     val contentCountry: String = "US",
     val contentLanguage: String = "en",
+    val checkUpdates: Boolean = true,
+    val updateNotifications: Boolean = true,
+    val nightlyUpdates: Boolean = false,
+    val dismissedUpdateTag: String = "",
+    val lastNotifiedTag: String = "",
 )
 
 class PrefStore(private val context: Context) {
