@@ -513,16 +513,13 @@ fun viewsettings(
                                 )
                                 val updSub = when {
                                     updateState.checking -> "Checking for updates..."
-                                    updateState.hasUpdate && updateState.latest != null ->
-                                        "New version v${updateState.latest!!.versionName} available"
-                                    else -> "Check for updates & notifications"
+                                    else -> "Check for updates & phone notifications"
                                 }
                                 navitem(
                                     icon = ZIcons.Update,
                                     title = "App Updates",
                                     subtitle = updSub,
                                     position = GroupPos.MIDDLE,
-                                    showBadge = updateState.hasUpdate,
                                     onClick = { page = SettingsPage.UPDATER },
                                 )
                                 navitem(
@@ -542,88 +539,6 @@ fun viewsettings(
                                     position = GroupPos.BOTTOM,
                                     onClick = { page = SettingsPage.ABOUT },
                                 )
-                            }
-                        }
-
-                        val readyRelease = updateState.latest?.takeIf { updateState.hasUpdate }
-                        if (readyRelease != null) {
-                            item(key = "update_banner") {
-                                grouptitle("New Version Available")
-                                glass(
-                                    shape = RoundedCornerShape(24.dp),
-                                    elevated = true,
-                                    accented = true,
-                                    contentPadding = PaddingValues(18.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 18.dp, vertical = 4.dp),
-                                ) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.fillMaxWidth(),
-                                        ) {
-                                            Box(
-                                                contentAlignment = Alignment.Center,
-                                                modifier = Modifier
-                                                    .size(42.dp)
-                                                    .clip(CircleShape)
-                                                    .background(glassTokens.accentSoft),
-                                            ) {
-                                                Icon(
-                                                    imageVector = ZIcons.Update,
-                                                    contentDescription = null,
-                                                    tint = glassTokens.accent,
-                                                    modifier = Modifier.size(21.dp),
-                                                )
-                                            }
-                                            Spacer(Modifier.width(12.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = "Zuiwan v${readyRelease.versionName}",
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = glassTokens.ink,
-                                                )
-                                                Text(
-                                                    text = readyRelease.publishedAt.substringBefore("T")
-                                                        .ifBlank { "Ready to install" },
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = glassTokens.inkSecondary,
-                                                )
-                                            }
-                                        }
-
-                                        if (readyRelease.body.isNotBlank()) {
-                                            notebody(
-                                                raw = readyRelease.body.lines().take(5).joinToString("\n"),
-                                            )
-                                        }
-
-                                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            val dlText = when {
-                                                updateState.downloading ->
-                                                    "Downloading ${(updateState.downloadProgress * 100f).toInt()}%"
-                                                updateState.readyTag == readyRelease.tagName &&
-                                                    !updateState.readyApkPath.isNullOrBlank() -> "Install Update"
-                                                else -> "Update Now"
-                                            }
-                                            pillbtn(
-                                                text = dlText,
-                                                icon = ZIcons.Download,
-                                                primary = true,
-                                                onClick = { hub.installupdate(readyRelease) },
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                            pillbtn(
-                                                text = "Release Notes",
-                                                icon = ZIcons.Notes,
-                                                onClick = { hub.openupdate() },
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
@@ -1098,7 +1013,7 @@ fun viewsettings(
                                 }
                                 val checkSub = when {
                                     updateState.error != null -> updateState.error!!
-                                    updateState.hasUpdate -> "Tap to view release notes & download"
+                                    updateState.hasUpdate -> "Tap to install update"
                                     else -> "Tap to check GitHub releases now"
                                 }
                                 glass(
@@ -1107,7 +1022,7 @@ fun viewsettings(
                                     onClick = {
                                         if (!updateState.checking) {
                                             if (updateState.hasUpdate && updateState.latest != null) {
-                                                hub.openupdate()
+                                                hub.installupdate(updateState.latest)
                                             } else {
                                                 hub.runupdater(force = true, manual = true)
                                             }

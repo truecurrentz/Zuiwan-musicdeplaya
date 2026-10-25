@@ -92,9 +92,6 @@ class Hub(val appContext: Context) {
 
     private val updateStateFlow = MutableStateFlow(UpdateStatus())
     val updateState: StateFlow<UpdateStatus> = updateStateFlow.asStateFlow()
-
-    private val updatePromptFlow = MutableStateFlow<ReleaseNote?>(null)
-    val updatePrompt: StateFlow<ReleaseNote?> = updatePromptFlow.asStateFlow()
     private var pendingInstallApk: File? = null
 
     private val noticeFlow = MutableStateFlow(NoticeState())
@@ -845,21 +842,6 @@ class Hub(val appContext: Context) {
         }
     }
 
-    fun openupdate() {
-        val target = updateStateFlow.value.latest ?: return
-        updatePromptFlow.value = target
-    }
-
-    fun hideupdate(rememberTag: Boolean = false) {
-        val current = updatePromptFlow.value
-        updatePromptFlow.value = null
-        if (rememberTag && current != null) {
-            scope.launch {
-                store.updatesettings { it.copy(dismissedUpdateTag = current.tagName) }
-            }
-        }
-    }
-
     fun loadchangelog(force: Boolean = false) {
         scope.launch {
             val curSettings = settings.value
@@ -886,15 +868,11 @@ class Hub(val appContext: Context) {
                     checking = false,
                     hasUpdate = false,
                 )
-                updatePromptFlow.value = null
                 updater.clearalert()
                 return@launch
             }
 
             updateStateFlow.value = updateStateFlow.value.copy(checking = true, error = null)
-            if (manual) {
-                shownotice(NoticeKind.LOADING, "Checking for Updates", "Contacting GitHub releases")
-            }
 
             val result = updater.checkupdate(
                 force = force || manual,
@@ -918,41 +896,13 @@ class Hub(val appContext: Context) {
                 )
 
                 if (hasNew && release != null) {
-                    if (manual) {
-                        shownotice(
-                            kind = NoticeKind.UPDATE,
-                            title = "Update Available",
-                            subtitle = "Zuiwan v${release.versionName} is ready",
-                            actionLabel = "View",
-                            onAction = { openupdate() },
-                        )
-                        updatePromptFlow.value = release
-                    } else {
-                        if (release.tagName != curSettings.dismissedUpdateTag) {
-                            updatePromptFlow.value = release
-                        }
-                        if (curSettings.updateNotifications && release.tagName != curSettings.lastNotifiedTag) {
-                            updater.postalert(release)
-                            shownotice(
-                                kind = NoticeKind.UPDATE,
-                                title = "New Update Available",
-                                subtitle = "Zuiwan v${release.versionName} · Tap to view",
-                                actionLabel = "Update",
-                                onAction = { openupdate() },
-                            )
+                    if (manual || (curSettings.updateNotifications && release.tagName != curSettings.lastNotifiedTag)) {
+                        if (updater.postalert(release)) {
                             store.updatesettings { it.copy(lastNotifiedTag = release.tagName) }
                         }
                     }
                 } else {
-                    updatePromptFlow.value = null
                     updater.clearalert()
-                    if (manual) {
-                        shownotice(
-                            kind = NoticeKind.SUCCESS,
-                            title = "Zuiwan is Up to Date",
-                            subtitle = "Running v${BuildConfig.VERSION_NAME}",
-                        )
-                    }
                 }
             }.onFailure { err ->
                 val msg = err.message ?: "Unable to check for updates"
@@ -960,13 +910,6 @@ class Hub(val appContext: Context) {
                     checking = false,
                     error = msg,
                 )
-                if (manual) {
-                    shownotice(
-                        kind = NoticeKind.ERROR,
-                        title = "Update Check Failed",
-                        subtitle = msg,
-                    )
-                }
             }
         }
     }
@@ -975,13 +918,7 @@ class Hub(val appContext: Context) {
         val pending = pendingInstallApk ?: return
         if (!updater.caninstall()) return
         pendingInstallApk = null
-        updater.launchapk(pending).onFailure { err ->
-            shownotice(
-                kind = NoticeKind.ERROR,
-                title = "Installer Error",
-                subtitle = err.message ?: "Unable to launch installer",
-            )
-        }
+        updater.launchapk(pending)
     }
 
     fun installupdate(target: ReleaseNote? = null) {
@@ -989,7 +926,6 @@ class Hub(val appContext: Context) {
         if (updateStateFlow.value.downloading) return
 
         if (!updater.isdirectapk(release.downloadUrl)) {
-            hideupdate(rememberTag = false)
             updater.openbrowser(release.downloadUrl)
             return
         }
@@ -1003,22 +939,10 @@ class Hub(val appContext: Context) {
         if (existing != null) {
             if (!updater.caninstall()) {
                 pendingInstallApk = existing
-                shownotice(
-                    kind = NoticeKind.INFO,
-                    title = "Allow App Updates",
-                    subtitle = "Enable Install Unknown Apps to update in-place",
-                )
                 updater.opensources()
                 return
             }
-            hideupdate(rememberTag = false)
-            updater.launchapk(existing).onFailure { err ->
-                shownotice(
-                    kind = NoticeKind.ERROR,
-                    title = "Installer Error",
-                    subtitle = err.message ?: "Unable to open update package",
-                )
-            }
+            updater.launchapk(existing)
             return
         }
 
@@ -1028,24 +952,14 @@ class Hub(val appContext: Context) {
                 downloadProgress = 0.02f,
                 error = null,
             )
-            shownotice(
-                kind = NoticeKind.LOADING,
-                title = "Downloading Zuiwan v${release.versionName}",
-                subtitle = "Preparing in-place update",
-                progress = 0.02f,
-            )
+            updater.postprogress(release, 0.02f)
 
             updater.downloadapk(release) { prog ->
                 updateStateFlow.value = updateStateFlow.value.copy(
                     downloading = true,
                     downloadProgress = prog,
                 )
-                updatenotice(
-                    kind = NoticeKind.LOADING,
-                    title = "Downloading Zuiwan v${release.versionName}",
-                    subtitle = "Preparing in-place update",
-                    progress = prog,
-                )
+                updater.postprogress(release, prog)
             }.onSuccess { apkFile ->
                 updateStateFlow.value = updateStateFlow.value.copy(
                     downloading = false,
@@ -1054,29 +968,13 @@ class Hub(val appContext: Context) {
                     readyApkPath = apkFile.absolutePath,
                     error = null,
                 )
+                updater.clearalert()
 
                 if (!updater.caninstall()) {
                     pendingInstallApk = apkFile
-                    shownotice(
-                        kind = NoticeKind.UPDATE,
-                        title = "Allow App Updates",
-                        subtitle = "Enable switch once — Zuiwan will update right away",
-                    )
                     updater.opensources()
                 } else {
-                    hideupdate(rememberTag = false)
-                    shownotice(
-                        kind = NoticeKind.SUCCESS,
-                        title = "Update Ready",
-                        subtitle = "Confirm Update in the system prompt",
-                    )
-                    updater.launchapk(apkFile).onFailure { err ->
-                        shownotice(
-                            kind = NoticeKind.ERROR,
-                            title = "Installer Error",
-                            subtitle = err.message ?: "Unable to launch package installer",
-                        )
-                    }
+                    updater.launchapk(apkFile)
                 }
             }.onFailure { err ->
                 val msg = err.message ?: "Download failed"
@@ -1085,11 +983,7 @@ class Hub(val appContext: Context) {
                     downloadProgress = 0f,
                     error = msg,
                 )
-                shownotice(
-                    kind = NoticeKind.ERROR,
-                    title = "Update Download Failed",
-                    subtitle = msg,
-                )
+                updater.clearalert()
             }
         }
     }
