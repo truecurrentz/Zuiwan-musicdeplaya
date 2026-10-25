@@ -96,6 +96,7 @@ fun viewsearch(
     val homeFeed by hub.homeFeed.collectAsState()
     val history by hub.historyTracks.collectAsState()
     val playback by hub.pilot.state.collectAsState()
+    val updateState by hub.updateState.collectAsState()
 
     var query by rememberSaveable { mutableStateOf("") }
     var submitted by rememberSaveable { mutableStateOf("") }
@@ -190,6 +191,8 @@ fun viewsearch(
     scrollhost(
         scroll = headerScroll,
         lifted = lifted,
+        pinned = true,
+        fallbackHeight = 196.dp,
         header = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 brandbar {
@@ -199,6 +202,7 @@ fun viewsearch(
                     )
                     iconbtn(
                         icon = ZIcons.Settings,
+                        showBadge = updateState.hasUpdate,
                         onClick = { onNavigate(Route.Settings) },
                     )
                 }

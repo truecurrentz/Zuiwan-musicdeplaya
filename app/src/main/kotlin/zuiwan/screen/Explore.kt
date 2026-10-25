@@ -75,6 +75,7 @@ fun viewexplore(
     scrollhost(
         scroll = headerScroll,
         lifted = lifted,
+        pinned = true,
         header = {
             topbar(title = "Explore") {
                 iconbtn(

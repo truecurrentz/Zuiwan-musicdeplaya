@@ -131,6 +131,7 @@ fun scrollhost(
     scroll: HeaderScroll,
     lifted: Boolean,
     overlayHero: Boolean = false,
+    pinned: Boolean = false,
     fallbackHeight: Dp = 88.dp,
     header: @Composable () -> Unit,
     content: @Composable (Dp) -> Unit,
@@ -147,8 +148,8 @@ fun scrollhost(
         )
     }
 
-    LaunchedEffect(lifted) {
-        if (!lifted && scroll.offsetPx < 0f) {
+    LaunchedEffect(lifted, pinned) {
+        if ((pinned || !lifted) && scroll.offsetPx < 0f) {
             animate(
                 initialValue = scroll.offsetPx,
                 targetValue = 0f,
@@ -170,7 +171,7 @@ fun scrollhost(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .nestedScroll(scroll.connection),
+            .let { base -> if (pinned) base else base.nestedScroll(scroll.connection) },
     ) {
         content(insetDp)
 
@@ -180,8 +181,8 @@ fun scrollhost(
                 .fillMaxWidth()
                 .onSizeChanged { scroll.updateheight(it.height.toFloat()) }
                 .graphicsLayer {
-                    translationY = scroll.offsetPx
-                    alpha = scroll.visibility
+                    translationY = if (pinned) 0f else scroll.offsetPx
+                    alpha = if (pinned) 1f else scroll.visibility
                 },
         ) {
             if (lifted) {
