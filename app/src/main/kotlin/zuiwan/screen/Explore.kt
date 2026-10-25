@@ -23,7 +23,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,11 +45,9 @@ import zuiwan.ui.topbar
 import zuiwan.ui.mediacard
 import zuiwan.ui.picktile
 import zuiwan.ui.Route
-import zuiwan.ui.scrollhost
 import zuiwan.ui.sectionbar
 import zuiwan.ui.songrow
 import zuiwan.ui.ZIcons
-import zuiwan.ui.headerscroll
 
 @Composable
 fun viewexplore(
@@ -64,34 +61,33 @@ fun viewexplore(
     val loading by hub.exploreLoading.collectAsState()
     val playback by hub.pilot.state.collectAsState()
 
-    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
-    val lifted by remember {
-        derivedStateOf {
-            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 12
-        }
-    }
 
-    scrollhost(
-        scroll = headerScroll,
-        lifted = lifted,
-        pinned = true,
-        header = {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(glassTokens.bg),
+        ) {
             topbar(title = "Explore") {
                 iconbtn(
                     icon = ZIcons.Refresh,
                     onClick = { hub.refreshexplore() },
                 )
             }
-        },
-    ) { topPad ->
+        }
+
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(
-                top = topPad + 6.dp,
+                top = 6.dp,
                 bottom = bottomPadding.calculateBottomPadding() + 24.dp,
             ),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
         ) {
             if (loading && explore.releases.isEmpty() && explore.moods.isEmpty()) {
                 item(key = "loader") {
