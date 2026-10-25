@@ -41,6 +41,7 @@ import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
 import zuiwan.ui.albumcard
 import zuiwan.ui.glass
+import zuiwan.ui.headerscroll
 import zuiwan.ui.iconbtn
 import zuiwan.ui.topbar
 import zuiwan.ui.mediacard
@@ -50,7 +51,6 @@ import zuiwan.ui.scrollhost
 import zuiwan.ui.sectionbar
 import zuiwan.ui.songrow
 import zuiwan.ui.ZIcons
-import zuiwan.ui.headerscroll
 
 @Composable
 fun viewexplore(
@@ -64,34 +64,33 @@ fun viewexplore(
     val loading by hub.exploreLoading.collectAsState()
     val playback by hub.pilot.state.collectAsState()
 
-    val headerScroll = headerscroll()
     val listState = rememberLazyListState()
-    val lifted by remember {
-        derivedStateOf {
-            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 12
-        }
-    }
 
-    scrollhost(
-        scroll = headerScroll,
-        lifted = lifted,
-        pinned = true,
-        header = {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(glassTokens.bg),
+        ) {
             topbar(title = "Explore") {
                 iconbtn(
                     icon = ZIcons.Refresh,
                     onClick = { hub.refreshexplore() },
                 )
             }
-        },
-    ) { topPad ->
+        }
+
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(
-                top = topPad + 6.dp,
+                top = 6.dp,
                 bottom = bottomPadding.calculateBottomPadding() + 24.dp,
             ),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
         ) {
             if (loading && explore.releases.isEmpty() && explore.moods.isEmpty()) {
                 item(key = "loader") {

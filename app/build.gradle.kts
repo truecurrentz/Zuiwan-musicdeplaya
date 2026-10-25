@@ -7,6 +7,13 @@ val autoVersionCode: Int =
     ((System.currentTimeMillis() / 1_000L - 1_700_000_000L) / 10L)
         .toInt()
         .coerceAtLeast(100)
+val ciRefName: String = System.getenv("GITHUB_REF_NAME").orEmpty()
+val ciRunNumber: Int? = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+val autoVersionName: String = when {
+    ciRefName.startsWith("v") && ciRefName.length > 1 -> ciRefName.removePrefix("v")
+    ciRunNumber != null && ciRunNumber > 0 -> "1.0.$ciRunNumber"
+    else -> "1.0.0"
+}
 val currentGitSha: String =
     runCatching {
         providers
@@ -34,7 +41,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = autoVersionCode
-        versionName = "1.0.0"
+        versionName = autoVersionName
         vectorDrawables.useSupportLibrary = true
         buildConfigField("String", "GIT_SHA", "\"$currentGitSha\"")
         buildConfigField("long", "BUILD_TIME_MS", "${System.currentTimeMillis()}L")
