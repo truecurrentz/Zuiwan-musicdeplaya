@@ -518,7 +518,7 @@ fun viewstudio(
                                     color = glassTokens.accent,
                                 )
                                 pillbtn(
-                                    text = "Install Plugin (.json)",
+                                    text = "Install Plugin",
                                     icon = ZIcons.Plugin,
                                     primary = true,
                                     onClick = {
@@ -567,7 +567,7 @@ fun viewstudio(
                                         color = glassTokens.inkSecondary,
                                     )
                                 }
-                                if (!plugin.builtIn) {
+                                if (!plugin.builtin) {
                                     iconbtn(
                                         icon = ZIcons.Trash,
                                         tint = glassTokens.danger,

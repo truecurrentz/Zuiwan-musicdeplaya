@@ -135,23 +135,17 @@ class Hub(val appContext: Context) {
         AudioEffects(),
     )
 
-    private val pluginsFlow = MutableStateFlow<List<PluginSpec>>(LocalManager.builtinPlugins)
+    private val pluginsFlow = MutableStateFlow<List<PluginSpec>>(local.builtinPlugins)
     val plugins: StateFlow<List<PluginSpec>> = pluginsFlow.asStateFlow()
 
     val pluginCss: StateFlow<String> = combine(pluginsFlow, settings) { list, s ->
-        val builtInNeon = if ("neon_cyber" in s.enabledPlugins) {
-            ":root { --accent: #ff2d78; --accent-secondary: #00f2fe; --glass-opacity: 0.72; }"
-        } else {
-            ""
-        }
-        val extra = list.filter { it.id in s.enabledPlugins && it.css.isNotBlank() }
+        list.filter { it.id in s.enabledPlugins && it.css.isNotBlank() }
             .joinToString("\n") { it.css }
-        listOf(builtInNeon, extra).filter { it.isNotBlank() }.joinToString("\n")
     }.stateIn(scope, SharingStarted.Eagerly, "")
 
     val pluginJs: StateFlow<String> = combine(pluginsFlow, settings) { list, s ->
-        list.filter { it.id in s.enabledPlugins && it.script.isNotBlank() }
-            .joinToString("\n") { it.script }
+        list.filter { it.id in s.enabledPlugins && it.js.isNotBlank() }
+            .joinToString("\n") { it.js }
     }.stateIn(scope, SharingStarted.Eagerly, "")
 
     val vault: AudioVault = AudioVault(
@@ -279,21 +273,22 @@ class Hub(val appContext: Context) {
             }
         }
         scope.launch {
-            combine(store.effects, store.settings) { fx, s ->
-                val p = s.enabledPlugins
-                val merged = fx.copy(
-                    enabled = fx.enabled ||
-                        "bass_surge" in p ||
-                        "orbit_8d" in p ||
-                        "velvet_hall" in p ||
-                        "night_shield" in p,
-                    bassBoost = if ("bass_surge" in p) maxOf(fx.bassBoost, 0.58f) else fx.bassBoost,
-                    stereoWidth = if ("velvet_hall" in p) maxOf(fx.stereoWidth, 0.42f) else fx.stereoWidth,
-                    reverb = if ("velvet_hall" in p) maxOf(fx.reverb, 0.36f) else fx.reverb,
-                    orbit8d = fx.orbit8d || "orbit_8d" in p,
-                    nightLimiter = fx.nightLimiter || "night_shield" in p,
+            combine(store.effects, store.settings, pluginsFlow) { fx, s, plList ->
+                val activePl = plList.filter { it.id in s.enabledPlugins }
+                val plBass = activePl.maxOfOrNull { it.bassBoost } ?: 0f
+                val plWide = activePl.maxOfOrNull { it.stereoWide } ?: 0f
+                val plRev = activePl.maxOfOrNull { it.reverb } ?: 0f
+                val pl8d = activePl.any { it.spatial8d }
+                val plLim = activePl.any { it.nightLimit }
+                val hasPlFx = plBass > 0f || plWide > 0f || plRev > 0f || pl8d || plLim
+                fx.copy(
+                    enabled = fx.enabled || hasPlFx,
+                    bassBoost = maxOf(fx.bassBoost, plBass),
+                    stereoWide = maxOf(fx.stereoWide, plWide),
+                    reverb = maxOf(fx.reverb, plRev),
+                    spatial8d = fx.spatial8d || pl8d,
+                    nightLimit = fx.nightLimit || plLim,
                 )
-                merged
             }.collectLatest { merged ->
                 effects.applyfx(merged)
             }
@@ -782,11 +777,8 @@ class Hub(val appContext: Context) {
 
     fun scanlocal() {
         scope.launch {
-            shownotice(NoticeKind.LOADING, "Scanning Device Audio", "Indexing local songs and folders", 0.1f)
-            local.scandevice { done, total ->
-                val prog = if (total > 0) (done.toFloat() / total.toFloat()).coerceIn(0.05f, 0.98f) else 0.5f
-                updatenotice(NoticeKind.LOADING, "Scanning Device Audio", "$done of $total files", prog)
-            }.onSuccess { count ->
+            shownotice(NoticeKind.LOADING, "Scanning Device Audio", "Indexing local songs and folders", 0.35f)
+            local.scandevice().onSuccess { count ->
                 shownotice(
                     kind = NoticeKind.SUCCESS,
                     title = "Local Library Ready",
@@ -807,12 +799,12 @@ class Hub(val appContext: Context) {
         scope.launch {
             shownotice(NoticeKind.LOADING, "Importing Audio", "Reading ${uris.size} file(s)", 0.25f)
             local.importuris(uris)
-                .onSuccess { imported ->
-                    if (imported.isNotEmpty()) {
+                .onSuccess { addedCount ->
+                    if (addedCount > 0) {
                         shownotice(
                             kind = NoticeKind.SUCCESS,
-                            title = "Imported ${imported.size} Track(s)",
-                            subtitle = imported.first().title,
+                            title = "Imported $addedCount Track(s)",
+                            subtitle = "Added to Local Library",
                         )
                     } else {
                         shownotice(NoticeKind.ERROR, "Import Failed", "Unsupported audio file")
@@ -834,12 +826,12 @@ class Hub(val appContext: Context) {
         trimEndMs: Long,
     ) {
         scope.launch {
-            local.saveedits(
+            local.savemetadata(
                 track = track,
-                title = title,
-                artist = artist,
-                album = album,
-                artworkUri = artworkUri,
+                newTitle = title,
+                newArtist = artist,
+                newAlbum = album,
+                coverUri = artworkUri,
                 trimStartMs = trimStartMs,
                 trimEndMs = trimEndMs,
             ).onSuccess { updated ->
@@ -854,7 +846,7 @@ class Hub(val appContext: Context) {
     fun exportclip(track: Track, startMs: Long, endMs: Long) {
         scope.launch {
             shownotice(NoticeKind.LOADING, "Exporting Trimmed Clip", track.title, 0.45f)
-            local.exportclip(track, startMs, endMs)
+            local.exporttrim(track, startMs, endMs)
                 .onSuccess { clipTrack ->
                     shownotice(NoticeKind.SUCCESS, "Clip Saved to Library", clipTrack.title)
                 }
@@ -866,25 +858,15 @@ class Hub(val appContext: Context) {
 
     fun removelocal(track: Track) {
         scope.launch {
-            local.deletelocal(track.id)
+            dao.deletetrack(track.id)
             shownotice(NoticeKind.INFO, "Removed from Local Library", track.title)
         }
     }
 
     fun pickasset(uri: Uri, slot: String) {
         scope.launch {
-            val mime = appContext.contentResolver.getType(uri).orEmpty().lowercase()
-            val fallbackExt = when {
-                slot == "font" -> "ttf"
-                mime.contains("gif") -> "gif"
-                mime.contains("mp4") || mime.contains("video") -> "mp4"
-                mime.contains("webm") -> "webm"
-                mime.contains("png") -> "png"
-                else -> "jpg"
-            }
-            local.copyasset(uri, slot, fallbackExt)
-                .onSuccess { path ->
-                    val isVid = mime.startsWith("video/") || path.endsWith(".mp4", true) || path.endsWith(".webm", true)
+            local.copyasset(uri, slot)
+                .onSuccess { (path, isVid) ->
                     store.updatesettings { cur ->
                         when (slot) {
                             "wallpaper" -> cur.copy(wallpaperPath = path, motionBgPath = "", motionIsVideo = false)

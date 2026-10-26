@@ -245,10 +245,10 @@ fun viewequalizer(
                         )
                         fxslider(
                             label = "Stereo Widener",
-                            valueText = "${(fx.stereoWidth * 100).roundToInt()}%",
-                            value = fx.stereoWidth,
+                            valueText = "${(fx.stereoWide * 100).roundToInt()}%",
+                            value = fx.stereoWide,
                             range = 0f..1f,
-                            onChange = { v -> hub.seteffects(fx.copy(enabled = true, stereoWidth = v)) },
+                            onChange = { v -> hub.seteffects(fx.copy(enabled = true, stereoWide = v)) },
                         )
                         fxslider(
                             label = "Studio Reverb",
@@ -275,16 +275,16 @@ fun viewequalizer(
                         ) {
                             chip(
                                 label = "8D Orbit",
-                                selected = fx.enabled && fx.orbit8d,
+                                selected = fx.enabled && fx.spatial8d,
                                 onClick = {
-                                    hub.seteffects(fx.copy(enabled = true, orbit8d = !fx.orbit8d))
+                                    hub.seteffects(fx.copy(enabled = true, spatial8d = !fx.spatial8d))
                                 },
                             )
                             chip(
                                 label = "Night Limiter",
-                                selected = fx.enabled && fx.nightLimiter,
+                                selected = fx.enabled && fx.nightLimit,
                                 onClick = {
-                                    hub.seteffects(fx.copy(enabled = true, nightLimiter = !fx.nightLimiter))
+                                    hub.seteffects(fx.copy(enabled = true, nightLimit = !fx.nightLimit))
                                 },
                             )
                             chip(
