@@ -27,6 +27,12 @@ interface MusicDao {
     @Query("SELECT * FROM tracks WHERE downloaded = 1 ORDER BY COALESCE(downloadedAt, 0) DESC")
     fun downloadedtracks(): Flow<List<TrackEntity>>
 
+    @Query("SELECT * FROM tracks WHERE localUri IS NOT NULL AND localUri != '' ORDER BY title COLLATE NOCASE ASC")
+    fun localtracks(): Flow<List<TrackEntity>>
+
+    @Query("DELETE FROM tracks WHERE id = :id")
+    suspend fun deletetrack(id: String)
+
     @Query("UPDATE tracks SET downloaded = :downloaded, downloadedAt = :at WHERE id = :id")
     suspend fun setdownloaded(id: String, downloaded: Boolean, at: Long?)
 

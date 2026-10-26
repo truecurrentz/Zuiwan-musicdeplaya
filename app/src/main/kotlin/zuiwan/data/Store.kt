@@ -11,10 +11,14 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import zuiwan.model.AudioEffects
 import zuiwan.model.EqProfile
+import zuiwan.model.FontChoice
 import zuiwan.model.QualityMode
 import zuiwan.model.SessionData
+import zuiwan.model.ShaderPreset
 import zuiwan.model.ThemeChoice
+import zuiwan.model.VisualMode
 
 private val Context.zuiwanPrefs: DataStore<Preferences> by preferencesDataStore(name = "zuiwan_prefs")
 
@@ -40,6 +44,25 @@ data class AppSettings(
     val nightlyUpdates: Boolean = false,
     val dismissedUpdateTag: String = "",
     val lastNotifiedTag: String = "",
+    val customAccentHex: String = "",
+    val wallpaperPath: String = "",
+    val motionBgPath: String = "",
+    val motionIsVideo: Boolean = false,
+    val bannerPath: String = "",
+    val playerBgPath: String = "",
+    val blurRadius: Float = 64f,
+    val glassOpacity: Float = 1.0f,
+    val bgDim: Float = 0.56f,
+    val fontChoice: FontChoice = FontChoice.SANS,
+    val customFontPath: String = "",
+    val customCss: String = "",
+    val compactMode: Boolean = false,
+    val fullscreenMode: Boolean = false,
+    val syllableLyrics: Boolean = true,
+    val visualMode: VisualMode = VisualMode.SHADER,
+    val shaderPreset: ShaderPreset = ShaderPreset.AURORA,
+    val playerVisualBg: Boolean = false,
+    val enabledPlugins: Set<String> = emptySet(),
 )
 
 class PrefStore(private val context: Context) {
@@ -52,6 +75,7 @@ class PrefStore(private val context: Context) {
     private val settingsKey = stringPreferencesKey("settings_json")
     private val sessionKey = stringPreferencesKey("session_json")
     private val eqKey = stringPreferencesKey("eq_json")
+    private val effectsKey = stringPreferencesKey("effects_json")
 
     val settings: Flow<AppSettings> =
         context.zuiwanPrefs.data.map { prefs ->
@@ -72,6 +96,13 @@ class PrefStore(private val context: Context) {
             prefs[eqKey]?.let {
                 runCatching { json.decodeFromString<EqProfile>(it) }.getOrNull()
             } ?: EqProfile()
+        }
+
+    val effects: Flow<AudioEffects> =
+        context.zuiwanPrefs.data.map { prefs ->
+            prefs[effectsKey]?.let {
+                runCatching { json.decodeFromString<AudioEffects>(it) }.getOrNull()
+            } ?: AudioEffects()
         }
 
     suspend fun updatesettings(transform: (AppSettings) -> AppSettings) {
@@ -95,6 +126,12 @@ class PrefStore(private val context: Context) {
     suspend fun saveeq(profile: EqProfile) {
         context.zuiwanPrefs.edit { prefs ->
             prefs[eqKey] = json.encodeToString(profile)
+        }
+    }
+
+    suspend fun saveeffects(fx: AudioEffects) {
+        context.zuiwanPrefs.edit { prefs ->
+            prefs[effectsKey] = json.encodeToString(fx)
         }
     }
 }

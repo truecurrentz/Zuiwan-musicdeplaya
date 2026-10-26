@@ -459,7 +459,33 @@ class AudioPilot(
         )
     }
 
+    fun updatetrack(updated: Track) {
+        book.register(updated)
+        val cur = stateFlow.value
+        stateFlow.value = cur.copy(
+            current = cur.current?.let { if (it.id == updated.id) updated else it },
+            queue = cur.queue.map { if (it.id == updated.id) updated else it },
+        )
+        withplayer { p ->
+            for (idx in 0 until p.mediaItemCount) {
+                if (p.getMediaItemAt(idx).mediaId == updated.id) {
+                    val wasCurrent = idx == p.currentMediaItemIndex
+                    val pos = p.currentPosition
+                    val wasPlaying = p.isPlaying
+                    p.replaceMediaItem(idx, book.mediaitem(updated))
+                    if (wasCurrent) {
+                        val safePos = pos.coerceAtLeast(0L)
+                        p.seekTo(idx, safePos)
+                        if (wasPlaying) p.play()
+                    }
+                }
+            }
+            syncstate(p)
+        }
+    }
+
     private fun loadradio(videoId: String, force: Boolean = false) {
+        if (videoId.startsWith("local_")) return
         radioJob?.cancel()
         radioJob = scope.launch(Dispatchers.IO) {
             if (!force) {
@@ -489,7 +515,9 @@ class AudioPilot(
         val remaining = p.mediaItemCount - p.currentMediaItemIndex - 1
         if (remaining > 3) return
         val cont = book.continuation
-        val curId = stateFlow.value.current?.id ?: return
+        val curTrack = stateFlow.value.current ?: return
+        if (curTrack.id.startsWith("local_") || curTrack.localUri != null) return
+        val curId = curTrack.id
         scope.launch(Dispatchers.IO) {
             val prefs = store.settings.first()
             if (!prefs.autoRadio) return@launch
@@ -522,7 +550,9 @@ class AudioPilot(
                     id = mi.mediaId,
                     title = mi.mediaMetadata.title?.toString() ?: "Track",
                     artwork = upscaleart(mi.mediaMetadata.artworkUri?.toString().orEmpty())
-                        .ifBlank { "https://i.ytimg.com/vi/${mi.mediaId}/hqdefault.jpg" },
+                        .ifBlank {
+                            if (mi.mediaId.startsWith("local_")) "" else "https://i.ytimg.com/vi/${mi.mediaId}/hqdefault.jpg"
+                        },
                 )
         }
         val curIndex = player.currentMediaItemIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))

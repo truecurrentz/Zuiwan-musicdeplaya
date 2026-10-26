@@ -1,8 +1,13 @@
 package zuiwan.screen
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -103,12 +108,14 @@ private enum class LibFilter(val label: String) {
     LIBRARY("Library"),
     PLAYLISTS("Playlists"),
     SONGS("Songs"),
+    LOCAL("Local"),
     ALBUMS("Albums"),
     ARTISTS("Artists"),
 }
 
 private enum class SongScope(val label: String) {
     LIKED("Liked"),
+    LOCAL("Local"),
     ALL("In Library"),
     DOWNLOADED("Offline"),
 }
@@ -163,10 +170,12 @@ fun viewlibrary(
 ) {
     val hub = LocalHub.current
     val glassTokens = LocalGlass.current
+    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
 
     val liked by hub.likedTracks.collectAsState()
     val downloads by hub.downloadedTracks.collectAsState()
+    val localSongs by hub.localTracks.collectAsState()
     val history by hub.historyTracks.collectAsState()
     val topTracks by hub.topTracks.collectAsState()
     val playlists by hub.playlists.collectAsState()
@@ -178,6 +187,7 @@ fun viewlibrary(
 
     var filter by rememberSaveable { mutableStateOf(LibFilter.LIBRARY) }
     var songScope by rememberSaveable { mutableStateOf(SongScope.LIKED) }
+    var selectedFolder by rememberSaveable { mutableStateOf("") }
     var sortType by rememberSaveable { mutableStateOf(LibSort.ADDED) }
     var sortDesc by rememberSaveable { mutableStateOf(true) }
     var gridView by rememberSaveable { mutableStateOf(true) }
@@ -186,6 +196,30 @@ fun viewlibrary(
 
     var showCreate by remember { mutableStateOf(false) }
     var showImport by remember { mutableStateOf(false) }
+
+    val audioPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) hub.scanlocal()
+    }
+    val importAudioPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.isNotEmpty()) hub.importaudio(uris)
+    }
+
+    fun triggerscan() {
+        val perm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        if (ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED) {
+            hub.scanlocal()
+        } else {
+            audioPermLauncher.launch(perm)
+        }
+    }
 
     val headerScroll = headerscroll()
     val listState = rememberLazyListState()
@@ -200,7 +234,7 @@ fun viewlibrary(
         }
     }
 
-    val useGrid = gridView && filter != LibFilter.SONGS
+    val useGrid = gridView && filter != LibFilter.SONGS && filter != LibFilter.LOCAL
     val lifted by remember(useGrid) {
         derivedStateOf {
             if (useGrid) {
@@ -213,7 +247,7 @@ fun viewlibrary(
 
     val cleanQuery = remember(query) { query.trim().lowercase() }
 
-    val autoItems = remember(liked, downloads, history, topTracks, cleanQuery) {
+    val autoItems = remember(liked, downloads, localSongs, history, topTracks, cleanQuery) {
         val raw = listOf(
             LibEntry.AutoEntry(
                 id = "auto_liked",
@@ -221,6 +255,13 @@ fun viewlibrary(
                 subtitle = "${liked.size} songs",
                 icon = ZIcons.HeartFilled,
                 thumbs = liked.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4),
+            ),
+            LibEntry.AutoEntry(
+                id = "auto_local",
+                name = "Local",
+                subtitle = "${localSongs.size} songs",
+                icon = ZIcons.Folder,
+                thumbs = localSongs.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4),
             ),
             LibEntry.AutoEntry(
                 id = "auto_offline",
@@ -247,15 +288,24 @@ fun viewlibrary(
         if (cleanQuery.isBlank()) raw else raw.filter { it.name.lowercase().contains(cleanQuery) }
     }
 
-    val allKnownSongs = remember(liked, downloads, history) {
-        (liked + downloads + history).distinctBy { it.id }
+    val localFolders = remember(localSongs) {
+        localSongs.mapNotNull { it.folderName?.takeIf(String::isNotBlank) }.distinct().sorted()
     }
 
-    val filteredSongs = remember(songScope, liked, downloads, allKnownSongs, topTracks, sortType, sortDesc, cleanQuery) {
-        val base = when (songScope) {
-            SongScope.LIKED -> liked
-            SongScope.ALL -> allKnownSongs
-            SongScope.DOWNLOADED -> downloads
+    val allKnownSongs = remember(liked, downloads, localSongs, history) {
+        (liked + localSongs + downloads + history).distinctBy { it.id }
+    }
+
+    val filteredSongs = remember(filter, songScope, selectedFolder, liked, downloads, localSongs, allKnownSongs, topTracks, sortType, sortDesc, cleanQuery) {
+        val base = if (filter == LibFilter.LOCAL) {
+            if (selectedFolder.isBlank()) localSongs else localSongs.filter { it.folderName == selectedFolder }
+        } else {
+            when (songScope) {
+                SongScope.LIKED -> liked
+                SongScope.LOCAL -> localSongs
+                SongScope.ALL -> allKnownSongs
+                SongScope.DOWNLOADED -> downloads
+            }
         }
         val searched = if (cleanQuery.isBlank()) {
             base
@@ -263,7 +313,8 @@ fun viewlibrary(
             base.filter { s ->
                 s.title.lowercase().contains(cleanQuery) ||
                     s.artistline().lowercase().contains(cleanQuery) ||
-                    (s.album?.name?.lowercase()?.contains(cleanQuery) == true)
+                    (s.album?.name?.lowercase()?.contains(cleanQuery) == true) ||
+                    (s.folderName?.lowercase()?.contains(cleanQuery) == true)
             }
         }
         val topRank = topTracks.mapIndexed { idx, t -> t.id to idx }.toMap()
@@ -358,13 +409,13 @@ fun viewlibrary(
                 ars
             }
 
-            LibFilter.SONGS -> emptyList()
+            LibFilter.SONGS, LibFilter.LOCAL -> emptyList()
         }
     }
 
     val sortOptions = remember(filter) {
         when (filter) {
-            LibFilter.SONGS -> listOf(LibSort.ADDED, LibSort.NAME, LibSort.ARTIST, LibSort.PLAYS)
+            LibFilter.SONGS, LibFilter.LOCAL -> listOf(LibSort.ADDED, LibSort.NAME, LibSort.ARTIST, LibSort.PLAYS)
             LibFilter.ALBUMS -> listOf(LibSort.ADDED, LibSort.NAME, LibSort.ARTIST)
             else -> listOf(LibSort.ADDED, LibSort.NAME)
         }
@@ -377,7 +428,7 @@ fun viewlibrary(
     }
 
     val countLabel = when (filter) {
-        LibFilter.SONGS -> "${filteredSongs.size} songs"
+        LibFilter.SONGS, LibFilter.LOCAL -> "${filteredSongs.size} songs"
         LibFilter.PLAYLISTS -> "${playlists.size} playlists"
         LibFilter.ALBUMS -> "${albums.size} albums"
         LibFilter.ARTISTS -> "${artists.size} artists"
@@ -427,6 +478,10 @@ fun viewlibrary(
                     )
                 }
                 iconbtn(
+                    icon = ZIcons.Folder,
+                    onClick = { filter = LibFilter.LOCAL },
+                )
+                iconbtn(
                     icon = ZIcons.Import,
                     onClick = { showImport = true },
                 )
@@ -442,7 +497,12 @@ fun viewlibrary(
         },
     ) { topInset ->
         Box(modifier = Modifier.fillMaxSize()) {
-            if (filter == LibFilter.SONGS) {
+            if (filter == LibFilter.SONGS || filter == LibFilter.LOCAL) {
+                val queueLabel = if (filter == LibFilter.LOCAL) {
+                    selectedFolder.ifBlank { "Local Files" }
+                } else {
+                    songScope.label
+                }
                 LazyColumn(
                     state = listState,
                     contentPadding = PaddingValues(
@@ -459,6 +519,59 @@ fun viewlibrary(
                             onSelectSongScope = { songScope = it },
                             onImportM3u = { showImport = true },
                         )
+                    }
+
+                    if (filter == LibFilter.LOCAL) {
+                        item(key = "local_actions") {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    pillbtn(
+                                        text = "Scan Device",
+                                        icon = ZIcons.Refresh,
+                                        primary = true,
+                                        onClick = ::triggerscan,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    pillbtn(
+                                        text = "Add Audio Files",
+                                        icon = ZIcons.Folder,
+                                        onClick = { importAudioPicker.launch(arrayOf("audio/*")) },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+
+                                if (localFolders.isNotEmpty()) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                    ) {
+                                        chip(
+                                            label = "All Folders",
+                                            selected = selectedFolder.isBlank(),
+                                            onClick = { selectedFolder = "" },
+                                        )
+                                        localFolders.forEach { folder ->
+                                            chip(
+                                                label = folder,
+                                                selected = selectedFolder == folder,
+                                                leadingIcon = ZIcons.Folder,
+                                                onClick = { selectedFolder = folder },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     item(key = "toolbar") {
@@ -500,7 +613,7 @@ fun viewlibrary(
                                         hub.pilot.playtracks(
                                             filteredSongs,
                                             0,
-                                            songScope.label,
+                                            queueLabel,
                                         )
                                     },
                                     modifier = Modifier.weight(1f),
@@ -512,7 +625,7 @@ fun viewlibrary(
                                         hub.pilot.playtracks(
                                             filteredSongs.shuffled(),
                                             0,
-                                            songScope.label,
+                                            queueLabel,
                                         )
                                     },
                                     modifier = Modifier.weight(1f),
@@ -529,7 +642,7 @@ fun viewlibrary(
                                     hub.pilot.playtracks(
                                         filteredSongs,
                                         idx,
-                                        songScope.label,
+                                        queueLabel,
                                     )
                                 },
                                 onMore = { onTrackMenu(song) },
@@ -539,8 +652,12 @@ fun viewlibrary(
                     } else {
                         item(key = "empty_songs") {
                             libempty(
-                                icon = if (cleanQuery.isNotBlank()) ZIcons.Search else ZIcons.Note,
-                                text = if (cleanQuery.isNotBlank()) "No matching songs in your library" else "Songs you like or download appear here",
+                                icon = if (filter == LibFilter.LOCAL) ZIcons.Folder else if (cleanQuery.isNotBlank()) ZIcons.Search else ZIcons.Note,
+                                text = when {
+                                    cleanQuery.isNotBlank() -> "No matching songs in your library"
+                                    filter == LibFilter.LOCAL -> "Tap Scan Device or Add Audio Files to play local MP3, FLAC, WAV, M4A, and OGG music"
+                                    else -> "Songs you like or download appear here"
+                                },
                             )
                         }
                     }
@@ -726,6 +843,7 @@ private fun libchips(
             listOf(
                 LibFilter.PLAYLISTS,
                 LibFilter.SONGS,
+                LibFilter.LOCAL,
                 LibFilter.ALBUMS,
                 LibFilter.ARTISTS,
             ).forEach { target ->

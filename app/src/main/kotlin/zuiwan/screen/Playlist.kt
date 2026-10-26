@@ -93,6 +93,7 @@ fun viewplaylist(
     val savedPlaylists by hub.playlists.collectAsState()
     val likedTracks by hub.likedTracks.collectAsState()
     val downloadedTracks by hub.downloadedTracks.collectAsState()
+    val localTracks by hub.localTracks.collectAsState()
     val historyTracks by hub.historyTracks.collectAsState()
     val topTracks by hub.topTracks.collectAsState()
     val session by hub.session.collectAsState()
@@ -194,6 +195,17 @@ fun viewplaylist(
                 songCount = downloadedTracks.size,
             ),
             tracks = downloadedTracks,
+        )
+        "auto_local" -> PlaylistDetail(
+            playlist = PlaylistSummary(
+                id = "auto_local",
+                title = "Local Files",
+                author = "Device Storage",
+                local = true,
+                thumbnails = localTracks.mapNotNull { it.trackart().takeIf(String::isNotBlank) }.distinct().take(4),
+                songCount = localTracks.size,
+            ),
+            tracks = localTracks,
         )
         "auto_cached" -> PlaylistDetail(
             playlist = PlaylistSummary(

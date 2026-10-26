@@ -36,6 +36,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -181,6 +184,16 @@ fun viewlyrics(
                         onClick = { plainMode = false },
                     )
                     chip(
+                        label = "Syllable",
+                        selected = !plainMode && settings.syllableLyrics,
+                        onClick = {
+                            plainMode = false
+                            scope.launch {
+                                hub.store.updatesettings { it.copy(syllableLyrics = !it.syllableLyrics) }
+                            }
+                        },
+                    )
+                    chip(
                         label = "Plain",
                         selected = plainMode,
                         onClick = { plainMode = true },
@@ -249,6 +262,7 @@ fun viewlyrics(
                         line = line,
                         active = !plainMode && idx == activeIdx,
                         plainMode = plainMode || !payload.synced,
+                        syllableMode = settings.syllableLyrics,
                         positionMs = state.positionMs,
                         showRomanized = settings.romanizeLyrics,
                         onSeek = {
@@ -286,11 +300,15 @@ private fun lyricline(
     line: LyricLine,
     active: Boolean,
     plainMode: Boolean,
+    syllableMode: Boolean,
     positionMs: Long,
     showRomanized: Boolean,
     onSeek: () -> Unit,
 ) {
     val glassTokens = LocalGlass.current
+    val syllables = remember(line.timeMs, line.endMs, line.text, line.words) {
+        LyricParser.syllablesfor(line)
+    }
     val baseColor by animateColorAsState(
         targetValue = when {
             plainMode -> glassTokens.ink
@@ -321,6 +339,42 @@ private fun lyricline(
                     modifier = Modifier.size(22.dp),
                 )
             }
+        } else if (active && !plainMode && syllableMode && syllables.isNotEmpty()) {
+            val unsung = glassTokens.ink.copy(alpha = 0.34f)
+            val styled = buildAnnotatedString {
+                syllables.forEach { syl ->
+                    val dur = (syl.endMs - syl.startMs).coerceAtLeast(35L)
+                    val prog = ((positionMs - syl.startMs).toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+                    val col = when {
+                        prog <= 0f -> unsung
+                        prog < 1f -> lerp(unsung, glassTokens.accent, prog)
+                        else -> glassTokens.ink
+                    }
+                    val glow = if (prog > 0.02f && prog < 0.99f) {
+                        Shadow(
+                            color = glassTokens.accent.copy(alpha = 0.55f),
+                            offset = Offset.Zero,
+                            blurRadius = 18f,
+                        )
+                    } else {
+                        null
+                    }
+                    withStyle(
+                        SpanStyle(
+                            color = col,
+                            fontWeight = FontWeight.Bold,
+                            shadow = glow,
+                        ),
+                    ) {
+                        append(syl.text)
+                    }
+                }
+            }
+            Text(
+                text = styled,
+                fontSize = 27.sp,
+                lineHeight = 35.sp,
+            )
         } else if (active && line.words.isNotEmpty() && !plainMode) {
             val styled = buildAnnotatedString {
                 line.words.forEach { w ->

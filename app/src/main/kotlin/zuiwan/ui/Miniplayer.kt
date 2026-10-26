@@ -97,7 +97,10 @@ fun miniplayer(
             strong = true,
             frosted = true,
             onClick = onExpand,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+            contentPadding = PaddingValues(
+                horizontal = if (glassTokens.compact) 10.dp else 12.dp,
+                vertical = if (glassTokens.compact) 6.dp else 9.dp,
+            ),
             modifier = Modifier
                 .widthIn(max = 520.dp)
                 .fillMaxWidth(),
@@ -106,12 +109,14 @@ fun miniplayer(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
+                val ringSize = if (glassTokens.compact) 40.dp else 48.dp
+                val artSize = if (glassTokens.compact) 34.dp else 42.dp
                 Box(
                     contentAlignment = Alignment.Center,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(ringSize),
                 ) {
                     if (progress > 0.01f) {
-                        Canvas(modifier = Modifier.size(48.dp)) {
+                        Canvas(modifier = Modifier.size(ringSize)) {
                             val stroke = 2.4.dp.toPx()
                             drawArc(
                                 color = glassTokens.accent,
@@ -127,7 +132,7 @@ fun miniplayer(
                         fallbackUrl = track.fallbackart(),
                         shape = CircleShape,
                         fallbackIcon = ZIcons.Note,
-                        modifier = Modifier.size(42.dp),
+                        modifier = Modifier.size(artSize),
                     )
                 }
 

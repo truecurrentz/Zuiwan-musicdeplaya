@@ -28,6 +28,15 @@ private val migration1to2 = object : Migration(1, 2) {
     }
 }
 
+private val migration2to3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE tracks ADD COLUMN localUri TEXT")
+        db.execSQL("ALTER TABLE tracks ADD COLUMN folderName TEXT")
+        db.execSQL("ALTER TABLE tracks ADD COLUMN trimStartMs INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE tracks ADD COLUMN trimEndMs INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [
         TrackEntity::class,
@@ -42,7 +51,7 @@ private val migration1to2 = object : Migration(1, 2) {
         QueueEntity::class,
         RecognizedEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class MusicDb : RoomDatabase() {
@@ -58,7 +67,7 @@ abstract class MusicDb : RoomDatabase() {
                     context.applicationContext,
                     MusicDb::class.java,
                     "zuiwan.db",
-                ).addMigrations(migration1to2)
+                ).addMigrations(migration1to2, migration2to3)
                     .fallbackToDestructiveMigration(true)
                     .build()
                     .also { instance = it }

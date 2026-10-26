@@ -127,6 +127,134 @@ object LyricParser {
         return ans
     }
 
+    fun syllablesfor(line: LyricLine): List<LyricWord> {
+        if (line.text.isBlank()) return emptyList()
+        if (line.words.isNotEmpty()) {
+            val out = ArrayList<LyricWord>(line.words.size * 2)
+            for (w in line.words) {
+                val pieces = splitsyl(w.text)
+                if (pieces.size <= 1) {
+                    out += w
+                } else {
+                    val span = (w.endMs - w.startMs).coerceAtLeast(pieces.size * 40L)
+                    val totalWeight = pieces.sumOf { sylweight(it) }.coerceAtLeast(1)
+                    var cursor = w.startMs
+                    pieces.forEachIndexed { idx, piece ->
+                        val dur = if (idx == pieces.lastIndex) {
+                            (w.endMs - cursor).coerceAtLeast(30L)
+                        } else {
+                            (span * sylweight(piece) / totalWeight).coerceAtLeast(30L)
+                        }
+                        out += LyricWord(piece, cursor, cursor + dur)
+                        cursor += dur
+                    }
+                }
+            }
+            return out
+        }
+
+        val pieces = splitsyl(line.text)
+        if (pieces.isEmpty()) return emptyList()
+        val rawSpan = (line.endMs - line.timeMs).coerceIn(600L, 12_000L)
+        val activeSpan = (rawSpan * 86L / 100L).coerceAtLeast(pieces.size * 50L)
+        val totalWeight = pieces.sumOf { sylweight(it) }.coerceAtLeast(1)
+        val out = ArrayList<LyricWord>(pieces.size)
+        var cursor = line.timeMs
+        pieces.forEachIndexed { idx, piece ->
+            val dur = if (idx == pieces.lastIndex) {
+                (line.timeMs + activeSpan - cursor).coerceAtLeast(45L)
+            } else {
+                (activeSpan * sylweight(piece) / totalWeight).coerceAtLeast(45L)
+            }
+            out += LyricWord(piece, cursor, cursor + dur)
+            cursor += dur
+        }
+        return out
+    }
+
+    private fun sylweight(piece: String): Int {
+        val trimmed = piece.trim()
+        if (trimmed.isEmpty()) return 1
+        var w = trimmed.length.coerceIn(1, 6)
+        val last = trimmed.last()
+        if (last == ',' || last == ';' || last == '—') w += 3
+        if (last == '.' || last == '!' || last == '?') w += 4
+        return w
+    }
+
+    private fun splitsyl(text: String): List<String> {
+        if (text.isEmpty()) return emptyList()
+        val tokens = ArrayList<String>()
+        val tokenRegex = Regex("""\S+\s*|\s+""")
+        for (m in tokenRegex.findAll(text)) {
+            val tok = m.value
+            if (tok.isBlank()) {
+                if (tokens.isNotEmpty()) {
+                    tokens[tokens.lastIndex] = tokens.last() + tok
+                } else {
+                    tokens += tok
+                }
+                continue
+            }
+            val trailingWs = tok.takeLastWhile { it.isWhitespace() }
+            val core = tok.dropLast(trailingWs.length)
+            val coreSyls = splitword(core)
+            coreSyls.forEachIndexed { i, s ->
+                tokens += if (i == coreSyls.lastIndex) s + trailingWs else s
+            }
+        }
+        return tokens
+    }
+
+    private fun splitword(word: String): List<String> {
+        if (word.length <= 3) return listOf(word)
+        val hasCjk = word.any { ch ->
+            Character.UnicodeBlock.of(ch) in setOf(
+                Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS,
+                Character.UnicodeBlock.HIRAGANA,
+                Character.UnicodeBlock.KATAKANA,
+                Character.UnicodeBlock.HANGUL_SYLLABLES,
+            )
+        }
+        if (hasCjk) {
+            return word.map { it.toString() }
+        }
+        val vowels = "aeiouyAEIOUY"
+        val parts = ArrayList<String>()
+        val buf = StringBuilder()
+        var seenVowel = false
+        for (i in word.indices) {
+            val ch = word[i]
+            buf.append(ch)
+            val isV = vowels.indexOf(ch) >= 0
+            if (isV) {
+                seenVowel = true
+            } else if (seenVowel && i < word.lastIndex - 1) {
+                val nextIsV = vowels.indexOf(word[i + 1]) >= 0
+                if (nextIsV && buf.length >= 2) {
+                    val tail = buf.last()
+                    buf.setLength(buf.length - 1)
+                    parts += buf.toString()
+                    buf.setLength(0)
+                    buf.append(tail)
+                    seenVowel = false
+                } else if (!nextIsV && buf.length >= 3 && i + 2 <= word.lastIndex && vowels.indexOf(word[i + 2]) >= 0) {
+                    parts += buf.toString()
+                    buf.setLength(0)
+                    seenVowel = false
+                }
+            }
+        }
+        if (buf.isNotEmpty()) {
+            if (parts.isNotEmpty() && buf.none { vowels.indexOf(it) >= 0 }) {
+                parts[parts.lastIndex] = parts.last() + buf.toString()
+            } else {
+                parts += buf.toString()
+            }
+        }
+        return if (parts.isEmpty()) listOf(word) else parts
+    }
+
     private fun toms(minStr: String, secStr: String, fracStr: String): Long {
         val m = minStr.toLongOrNull() ?: 0L
         val s = secStr.toLongOrNull() ?: 0L

@@ -1025,4 +1025,126 @@ object ZIcons {
         curveTo(4.5f, 5.4f, 4.9f, 5f, 5.5f, 5f)
         horizontalLineTo(10.2f)
     }
+
+    val Fullscreen: ImageVector = stroke("Fullscreen") {
+        moveTo(4.5f, 9f)
+        verticalLineTo(4.5f)
+        horizontalLineTo(9f)
+        moveTo(15f, 4.5f)
+        horizontalLineTo(19.5f)
+        verticalLineTo(9f)
+        moveTo(19.5f, 15f)
+        verticalLineTo(19.5f)
+        horizontalLineTo(15f)
+        moveTo(9f, 19.5f)
+        horizontalLineTo(4.5f)
+        verticalLineTo(15f)
+    }
+
+    val Minimize: ImageVector = stroke("Minimize") {
+        moveTo(9f, 4.5f)
+        verticalLineTo(9f)
+        horizontalLineTo(4.5f)
+        moveTo(15f, 4.5f)
+        verticalLineTo(9f)
+        horizontalLineTo(19.5f)
+        moveTo(19.5f, 15f)
+        horizontalLineTo(15f)
+        verticalLineTo(19.5f)
+        moveTo(4.5f, 15f)
+        horizontalLineTo(9f)
+        verticalLineTo(19.5f)
+    }
+
+    val Code: ImageVector = stroke("Code") {
+        moveTo(8.5f, 7.5f)
+        lineTo(4f, 12f)
+        lineTo(8.5f, 16.5f)
+        moveTo(15.5f, 7.5f)
+        lineTo(20f, 12f)
+        lineTo(15.5f, 16.5f)
+        moveTo(13.5f, 5.5f)
+        lineTo(10.5f, 18.5f)
+    }
+
+    val Plugin: ImageVector = stroke("Plugin") {
+        moveTo(9f, 4f)
+        verticalLineTo(7.5f)
+        moveTo(15f, 4f)
+        verticalLineTo(7.5f)
+        moveTo(6.5f, 7.5f)
+        horizontalLineTo(17.5f)
+        verticalLineTo(13f)
+        curveTo(17.5f, 16f, 15f, 18f, 12f, 18f)
+        curveTo(9f, 18f, 6.5f, 16f, 6.5f, 13f)
+        close()
+        moveTo(12f, 18f)
+        verticalLineTo(20.5f)
+    }
+
+    val Scissors: ImageVector = stroke("Scissors") {
+        moveTo(6.5f, 6.5f)
+        arcTo(2.3f, 2.3f, 0f, true, true, 6.49f, 6.5f)
+        close()
+        moveTo(6.5f, 15f)
+        arcTo(2.3f, 2.3f, 0f, true, true, 6.49f, 15f)
+        close()
+        moveTo(8.4f, 8.2f)
+        lineTo(19.5f, 17.5f)
+        moveTo(19.5f, 6.5f)
+        lineTo(8.4f, 15.8f)
+    }
+
+    val Image: ImageVector = stroke("Image") {
+        moveTo(4.5f, 5.5f)
+        horizontalLineTo(19.5f)
+        verticalLineTo(18.5f)
+        horizontalLineTo(4.5f)
+        close()
+        moveTo(8.5f, 9f)
+        arcTo(1.4f, 1.4f, 0f, true, true, 8.49f, 9f)
+        close()
+        moveTo(5f, 17.5f)
+        lineTo(10.2f, 12.5f)
+        lineTo(13.8f, 15.8f)
+        lineTo(16.4f, 13.2f)
+        lineTo(19.2f, 16.5f)
+    }
+
+    val Video: ImageVector = stroke("Video") {
+        moveTo(4f, 6.5f)
+        horizontalLineTo(15f)
+        verticalLineTo(17.5f)
+        horizontalLineTo(4f)
+        close()
+        moveTo(15f, 10f)
+        lineTo(20f, 7.5f)
+        verticalLineTo(16.5f)
+        lineTo(15f, 14f)
+        close()
+    }
+
+    val Font: ImageVector = stroke("Font") {
+        moveTo(5f, 6f)
+        horizontalLineTo(19f)
+        moveTo(12f, 6f)
+        verticalLineTo(18.5f)
+        moveTo(9f, 18.5f)
+        horizontalLineTo(15f)
+    }
+
+    val Sliders: ImageVector = stroke("Sliders") {
+        moveTo(4f, 7f)
+        horizontalLineTo(20f)
+        moveTo(4f, 12f)
+        horizontalLineTo(20f)
+        moveTo(4f, 17f)
+        horizontalLineTo(20f)
+        moveTo(9f, 5f)
+        verticalLineTo(9f)
+        moveTo(15f, 10f)
+        verticalLineTo(14f)
+        moveTo(11f, 15f)
+        verticalLineTo(19f)
+    }
 }

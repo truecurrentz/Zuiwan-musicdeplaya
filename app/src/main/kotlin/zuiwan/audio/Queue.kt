@@ -50,12 +50,30 @@ class QueueBook {
             .setArtworkUri(art.takeIf { it.isNotBlank() }?.toUri())
             .setIsPlayable(true)
             .build()
-        return MediaItem.Builder()
+
+        val localSource = enriched.localUri?.takeIf { it.isNotBlank() }
+        val builder = MediaItem.Builder()
             .setMediaId(enriched.id)
-            .setUri("https://music.youtube.com/watch?v=${enriched.id}")
-            .setCustomCacheKey(enriched.id)
+            .setUri(localSource ?: "https://music.youtube.com/watch?v=${enriched.id}")
+            .apply {
+                if (localSource == null) {
+                    setCustomCacheKey(enriched.id)
+                }
+            }
             .setMediaMetadata(meta)
             .setTag(enriched)
-            .build()
+
+        if (enriched.trimStartMs > 0L || enriched.trimEndMs > enriched.trimStartMs) {
+            val clip = MediaItem.ClippingConfiguration.Builder()
+                .setStartPositionMs(enriched.trimStartMs.coerceAtLeast(0L))
+                .apply {
+                    if (enriched.trimEndMs > enriched.trimStartMs) {
+                        setEndPositionMs(enriched.trimEndMs)
+                    }
+                }
+                .build()
+            builder.setClippingConfiguration(clip)
+        }
+        return builder.build()
     }
 }

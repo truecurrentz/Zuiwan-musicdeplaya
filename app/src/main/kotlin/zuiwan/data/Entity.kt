@@ -41,6 +41,10 @@ data class TrackEntity(
     val playCount: Int = 0,
     val totalPlayTimeMs: Long = 0L,
     val lastPlayedAt: Long? = null,
+    val localUri: String? = null,
+    val folderName: String? = null,
+    val trimStartMs: Long = 0L,
+    val trimEndMs: Long = 0L,
 )
 
 fun TrackEntity.totrack(): Track {
@@ -48,7 +52,7 @@ fun TrackEntity.totrack(): Track {
         entityJson.decodeFromString<List<ArtistRef>>(artistsJson)
     }.getOrDefault(emptyList())
     val repairedArt = upscaleart(artwork).ifBlank {
-        if (id.length in 8..16 && !id.startsWith("local_") && !id.startsWith("auto_") && !id.startsWith("yt_")) {
+        if (localUri.isNullOrBlank() && id.length in 8..16 && !id.startsWith("local_") && !id.startsWith("auto_") && !id.startsWith("yt_")) {
             "https://i.ytimg.com/vi/$id/hqdefault.jpg"
         } else {
             ""
@@ -65,6 +69,10 @@ fun TrackEntity.totrack(): Track {
         video = video,
         liked = liked,
         downloaded = downloaded,
+        localUri = localUri,
+        folderName = folderName,
+        trimStartMs = trimStartMs,
+        trimEndMs = trimEndMs,
     )
 }
 
@@ -81,8 +89,12 @@ fun Track.toentity(): TrackEntity =
         video = video,
         liked = liked,
         likedAt = if (liked) System.currentTimeMillis() else null,
-        downloaded = downloaded,
-        downloadedAt = if (downloaded) System.currentTimeMillis() else null,
+        downloaded = downloaded || !localUri.isNullOrBlank(),
+        downloadedAt = if (downloaded || !localUri.isNullOrBlank()) System.currentTimeMillis() else null,
+        localUri = localUri,
+        folderName = folderName,
+        trimStartMs = trimStartMs,
+        trimEndMs = trimEndMs,
     )
 
 @Entity(tableName = "albums")

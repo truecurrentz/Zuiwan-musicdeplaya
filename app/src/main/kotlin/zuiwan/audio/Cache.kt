@@ -8,6 +8,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
@@ -97,8 +98,12 @@ class AudioVault(
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
 
-    fun playbacksource(normalizer: NormalizerProcessor): DataSource.Factory =
-        ResolvingDataSource.Factory(chainedcache(enableWriteStream = true)) { spec ->
+    fun playbacksource(normalizer: NormalizerProcessor): DataSource.Factory {
+        val remoteCache = ResolvingDataSource.Factory(chainedcache(enableWriteStream = true)) { spec ->
+            val scheme = spec.uri.scheme?.lowercase().orEmpty()
+            if (scheme == "content" || scheme == "file") {
+                return@Factory spec
+            }
             val mediaId = spec.key ?: spec.uri.lastPathSegment ?: error("Missing track id")
             val stored = runBlocking(Dispatchers.IO) { dao.getformat(mediaId)?.tospec() }
             if (stored != null) {
@@ -142,6 +147,8 @@ class AudioVault(
             }
             spec.withresolved(resolved)
         }
+        return DefaultDataSource.Factory(appContext, remoteCache)
+    }
 
     fun downloadtrack(track: Track) {
         if (jobs.containsKey(track.id)) return
