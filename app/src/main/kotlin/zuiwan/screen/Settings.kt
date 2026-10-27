@@ -472,9 +472,23 @@ fun viewsettings(
                                     onClick = { page = SettingsPage.APPEARANCE },
                                 )
                                 navitem(
+                                    icon = ZIcons.Plugin,
+                                    title = "Studio & Customization",
+                                    subtitle = "Custom accents, wallpaper, GIF/video, blur, fonts, CSS & plugins",
+                                    position = GroupPos.MIDDLE,
+                                    onClick = { onNavigate(Route.Studio) },
+                                )
+                                navitem(
+                                    icon = ZIcons.Sparkles,
+                                    title = "Music Visualizer",
+                                    subtitle = "WebGL shaders, reactive spectrum & fullscreen stage",
+                                    position = GroupPos.MIDDLE,
+                                    onClick = { onNavigate(Route.Visualizer) },
+                                )
+                                navitem(
                                     icon = ZIcons.Waveform,
                                     title = "Player & Audio",
-                                    subtitle = "${qualitylabel(settings.quality)} quality - ${if (eqProfile.enabled) eqProfile.name else "Parametric EQ"}",
+                                    subtitle = "${qualitylabel(settings.quality)} quality - Audio effects & EQ",
                                     position = GroupPos.MIDDLE,
                                     onClick = { page = SettingsPage.AUDIO },
                                 )
@@ -599,10 +613,47 @@ fun viewsettings(
                                     title = "Dynamic Artwork Accent",
                                     subtitle = "Blend interface highlights from the playing cover art",
                                     checked = settings.dynamicColors,
-                                    position = GroupPos.BOTTOM,
+                                    position = GroupPos.MIDDLE,
                                     onToggle = { v ->
                                         scope.launch { hub.store.updatesettings { it.copy(dynamicColors = v) } }
                                     },
+                                )
+                                switchitem(
+                                    icon = ZIcons.Lyrics,
+                                    title = "Syllable-Synced Lyrics",
+                                    subtitle = "Highlight individual syllables and words with progressive glow",
+                                    checked = settings.syllableLyrics,
+                                    position = GroupPos.MIDDLE,
+                                    onToggle = { v ->
+                                        scope.launch { hub.store.updatesettings { it.copy(syllableLyrics = v) } }
+                                    },
+                                )
+                                switchitem(
+                                    icon = ZIcons.Minimize,
+                                    title = "Compact Mode",
+                                    subtitle = "Denser lists and sleeker dock layout",
+                                    checked = settings.compactMode,
+                                    position = GroupPos.MIDDLE,
+                                    onToggle = { v ->
+                                        scope.launch { hub.store.updatesettings { it.copy(compactMode = v) } }
+                                    },
+                                )
+                                switchitem(
+                                    icon = ZIcons.Fullscreen,
+                                    title = "Fullscreen Mode",
+                                    subtitle = "Edge-to-edge display with hidden system bars",
+                                    checked = settings.fullscreenMode,
+                                    position = GroupPos.MIDDLE,
+                                    onToggle = { v ->
+                                        scope.launch { hub.store.updatesettings { it.copy(fullscreenMode = v) } }
+                                    },
+                                )
+                                navitem(
+                                    icon = ZIcons.Plugin,
+                                    title = "Open Studio",
+                                    subtitle = "Custom accents, wallpapers, GIF/video, blur, fonts, CSS & plugins",
+                                    position = GroupPos.BOTTOM,
+                                    onClick = { onNavigate(Route.Studio) },
                                 )
                             }
                         }
@@ -621,8 +672,8 @@ fun viewsettings(
                                 )
                                 navitem(
                                     icon = ZIcons.Equalizer,
-                                    title = "Parametric Equalizer",
-                                    subtitle = if (eqProfile.enabled) "Active preset: ${eqProfile.name}" else "Tap to configure 10-band EQ",
+                                    title = "Audio Effects & Parametric EQ",
+                                    subtitle = if (eqProfile.enabled) "Active preset: ${eqProfile.name}" else "Bass boost, stereo widener, reverb, 8D & 10-band EQ",
                                     position = GroupPos.BOTTOM,
                                     onClick = { onNavigate(Route.Equalizer) },
                                 )

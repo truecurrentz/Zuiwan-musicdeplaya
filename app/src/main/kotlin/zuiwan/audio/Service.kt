@@ -15,10 +15,7 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.extractor.ExtractorsFactory
-import androidx.media3.extractor.mkv.MatroskaExtractor
-import androidx.media3.extractor.mp4.FragmentedMp4Extractor
-import androidx.media3.extractor.mp4.Mp4Extractor
+import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -60,7 +57,7 @@ class AudioService : MediaSessionService() {
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessorChain(
                         DefaultAudioSink.DefaultAudioProcessorChain(
-                            arrayOf(hub.normalizer, hub.equalizer),
+                            arrayOf(hub.normalizer, hub.equalizer, hub.effects, hub.spectrum),
                             SilenceSkippingAudioProcessor(),
                             SonicAudioProcessor(),
                         ),
@@ -68,10 +65,8 @@ class AudioService : MediaSessionService() {
                     .build()
         }
 
-        @Suppress("DEPRECATION")
-        val extractors = ExtractorsFactory {
-            arrayOf(MatroskaExtractor(), FragmentedMp4Extractor(), Mp4Extractor())
-        }
+        val extractors = DefaultExtractorsFactory()
+            .setConstantBitrateSeekingEnabled(true)
         val mediaSourceFactory = DefaultMediaSourceFactory(
             hub.vault.playbacksource(hub.normalizer),
             extractors,
@@ -96,8 +91,15 @@ class AudioService : MediaSessionService() {
 
         player.addListener(
             object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (!isPlaying) {
+                        hub.spectrum.decayframe()
+                    }
+                }
+
                 override fun onPlayerError(error: PlaybackException) {
                     val mediaId = player.currentMediaItem?.mediaId ?: return
+                    if (mediaId.startsWith("local_")) return
                     val activeClient = hub.vault.activeSpec.value?.client
                     if (activeClient != null) {
                         hub.streams.markfailed(mediaId, activeClient)
@@ -114,7 +116,8 @@ class AudioService : MediaSessionService() {
 
         serviceScope.launch {
             hub.store.settings.collectLatest { prefs ->
-                player.skipSilenceEnabled = prefs.skipSilence
+                val pluginSkip = "silence_trim" in prefs.enabledPlugins
+                player.skipSilenceEnabled = prefs.skipSilence || pluginSkip
                 hub.normalizer.enabled = prefs.normalizeAudio
             }
         }

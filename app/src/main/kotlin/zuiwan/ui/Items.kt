@@ -334,7 +334,8 @@ fun songrow(
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val glassTokens = LocalGlass.current
-    val shape = RoundedCornerShape(14.dp)
+    val compact = glassTokens.compact
+    val shape = RoundedCornerShape(if (compact) 11.dp else 14.dp)
     val rowBg = when {
         playing -> glassTokens.accentSoft
         cardBackground -> glassTokens.glassFill
@@ -348,17 +349,20 @@ fun songrow(
             .clip(shape)
             .background(rowBg)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+            .padding(
+                horizontal = if (compact) 11.dp else 14.dp,
+                vertical = if (compact) 5.dp else 9.dp,
+            ),
     ) {
         if (indexNumber != null) {
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.width(30.dp),
+                modifier = Modifier.width(if (compact) 24.dp else 30.dp),
             ) {
                 if (playing) {
                     playbars(
                         color = glassTokens.accent,
-                        modifier = Modifier.height(17.dp),
+                        modifier = Modifier.height(if (compact) 14.dp else 17.dp),
                     )
                 } else {
                     Text(
@@ -369,17 +373,17 @@ fun songrow(
                     )
                 }
             }
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(if (compact) 8.dp else 10.dp))
         } else {
             artimage(
                 url = track.trackart(),
                 fallbackUrl = track.fallbackart(),
-                shape = RoundedCornerShape(11.dp),
+                shape = RoundedCornerShape(if (compact) 9.dp else 11.dp),
                 fallbackIcon = ZIcons.Note,
                 playing = playing,
-                modifier = Modifier.size(50.dp),
+                modifier = Modifier.size(if (compact) 40.dp else 50.dp),
             )
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(if (compact) 10.dp else 12.dp))
         }
 
         Column(modifier = Modifier.weight(1f)) {
@@ -430,6 +434,14 @@ fun songrow(
                         contentDescription = null,
                         tint = glassTokens.accent,
                         modifier = Modifier.size(13.dp),
+                    )
+                }
+                if (track.localUri != null || track.id.startsWith("local_")) {
+                    Icon(
+                        imageVector = ZIcons.Folder,
+                        contentDescription = null,
+                        tint = glassTokens.accentSecondary,
+                        modifier = Modifier.size(12.dp),
                     )
                 }
                 val metaText = buildString {

@@ -51,6 +51,8 @@ sealed interface Route {
     data object History : Route { override val key = "history" }
     data object Stats : Route { override val key = "stats" }
     data object Equalizer : Route { override val key = "eq" }
+    data object Studio : Route { override val key = "studio" }
+    data object Visualizer : Route { override val key = "visualizer" }
     data object Settings : Route { override val key = "settings" }
     data object Login : Route { override val key = "login" }
 }
@@ -160,7 +162,7 @@ fun floatingbar(
                         verticalArrangement = Arrangement.Center,
                         modifier = Modifier
                             .weight(1f)
-                            .height(56.dp)
+                            .height(if (glassTokens.compact) 46.dp else 56.dp)
                             .clip(RoundedCornerShape(20.dp))
                             .clickable { onSelect(tab) },
                     ) {
@@ -168,7 +170,7 @@ fun floatingbar(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .width(56.dp)
-                                .height(30.dp)
+                                .height(if (glassTokens.compact) 26.dp else 30.dp)
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(pillColor),
                         ) {
@@ -176,15 +178,17 @@ fun floatingbar(
                                 imageVector = tab.icon,
                                 contentDescription = tab.label,
                                 tint = iconTint,
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(if (glassTokens.compact) 18.dp else 20.dp),
                             )
                         }
-                        Text(
-                            text = tab.label,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = labelTint,
-                            modifier = Modifier.padding(top = 3.dp),
-                        )
+                        if (!glassTokens.compact) {
+                            Text(
+                                text = tab.label,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = labelTint,
+                                modifier = Modifier.padding(top = 3.dp),
+                            )
+                        }
                     }
                 }
             }

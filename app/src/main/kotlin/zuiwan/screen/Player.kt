@@ -79,9 +79,11 @@ import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
 import zuiwan.ui.artimage
 import zuiwan.ui.iconbtn
+import zuiwan.ui.reactivevisual
 import zuiwan.ui.Route
 import zuiwan.ui.thinslider
 import zuiwan.ui.ZIcons
+import java.io.File
 import kotlin.math.roundToInt
 
 private enum class PlayerPane {
@@ -104,10 +106,23 @@ fun viewplayer(
     val likedIds by hub.likedIds.collectAsState()
     val sleepState by hub.pilot.sleep.state.collectAsState()
     val eqProfile by hub.eq.collectAsState()
+    val fxProfile by hub.audioEffects.collectAsState()
+    val settings by hub.settings.collectAsState()
+    val spectrumFrame by hub.spectrum.frame.collectAsState()
+    val pluginCss by hub.pluginCss.collectAsState()
+    val pluginJs by hub.pluginJs.collectAsState()
 
     val track = state.current ?: return
     val isLiked = track.id in likedIds
-    val hiResArt = remember(track.id, track.artwork) { track.trackart(1080) }
+    val customPlayerBg = remember(settings.playerBgPath) {
+        settings.playerBgPath.takeIf { it.isNotBlank() && File(it).exists() }
+    }
+    val customBanner = remember(settings.bannerPath) {
+        settings.bannerPath.takeIf { it.isNotBlank() && File(it).exists() }
+    }
+    val hiResArt = remember(track.id, track.artwork, customPlayerBg) {
+        customPlayerBg ?: track.trackart(1080)
+    }
     val backupArt = remember(track.id) { track.fallbackart() }
 
     val audioManager = remember(context) {
@@ -158,9 +173,26 @@ fun viewplayer(
             stageHeight = stageHeight,
             fullBleedTop = pane == PlayerPane.COVER,
             blurEnabled = glassTokens.blurEnabled,
+            blurRadius = glassTokens.blurRadius,
             isDark = glassTokens.isDark,
             baseBg = glassTokens.bg,
         )
+
+        if (settings.playerVisualBg) {
+            reactivevisual(
+                mode = settings.visualMode,
+                preset = settings.shaderPreset,
+                frame = spectrumFrame,
+                customCss = "$pluginCss\n${settings.customCss}",
+                customJs = pluginJs,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(glassTokens.bg.copy(alpha = 0.42f)),
+            )
+        }
 
         AnimatedContent(
             targetState = pane,
@@ -281,7 +313,7 @@ fun viewplayer(
                             pane = activePane,
                             shuffle = state.shuffle,
                             repeatMode = state.repeatMode,
-                            eqEnabled = eqProfile.enabled,
+                            eqEnabled = eqProfile.enabled || fxProfile.enabled,
                             sleepActive = sleepState.active,
                             tempoActive = state.speed != 1f || state.pitch != 1f,
                             onToggleLyrics = { pane = PlayerPane.COVER },
@@ -291,6 +323,10 @@ fun viewplayer(
                             onOpenEq = {
                                 onCollapse()
                                 onNavigate(Route.Equalizer)
+                            },
+                            onOpenVisual = {
+                                onCollapse()
+                                onNavigate(Route.Visualizer)
                             },
                             onOpenSleep = { showSleep = true },
                             onOpenTempo = { showTempo = true },
@@ -370,7 +406,7 @@ fun viewplayer(
                             pane = activePane,
                             shuffle = state.shuffle,
                             repeatMode = state.repeatMode,
-                            eqEnabled = eqProfile.enabled,
+                            eqEnabled = eqProfile.enabled || fxProfile.enabled,
                             sleepActive = sleepState.active,
                             tempoActive = state.speed != 1f || state.pitch != 1f,
                             onToggleLyrics = { pane = PlayerPane.LYRICS },
@@ -380,6 +416,10 @@ fun viewplayer(
                             onOpenEq = {
                                 onCollapse()
                                 onNavigate(Route.Equalizer)
+                            },
+                            onOpenVisual = {
+                                onCollapse()
+                                onNavigate(Route.Visualizer)
                             },
                             onOpenSleep = { showSleep = true },
                             onOpenTempo = { showTempo = true },
@@ -418,10 +458,36 @@ fun viewplayer(
                                 textAlign = TextAlign.Center,
                             )
                             iconbtn(
+                                icon = ZIcons.Sparkles,
+                                onClick = {
+                                    onCollapse()
+                                    onNavigate(Route.Visualizer)
+                                },
+                                size = 40.dp,
+                                iconSize = 20.dp,
+                            )
+                            iconbtn(
                                 icon = ZIcons.MoreHoriz,
                                 onClick = { onTrackMenu(track) },
                                 size = 40.dp,
                                 iconSize = 21.dp,
+                            )
+                        }
+
+                        if (customBanner != null) {
+                            Spacer(Modifier.height(10.dp))
+                            AsyncImage(
+                                model = File(customBanner),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(74.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .clickable {
+                                        onCollapse()
+                                        onNavigate(Route.Studio)
+                                    },
                             )
                         }
 
@@ -544,7 +610,7 @@ fun viewplayer(
                             pane = activePane,
                             shuffle = state.shuffle,
                             repeatMode = state.repeatMode,
-                            eqEnabled = eqProfile.enabled,
+                            eqEnabled = eqProfile.enabled || fxProfile.enabled,
                             sleepActive = sleepState.active,
                             tempoActive = state.speed != 1f || state.pitch != 1f,
                             onToggleLyrics = { pane = PlayerPane.LYRICS },
@@ -554,6 +620,10 @@ fun viewplayer(
                             onOpenEq = {
                                 onCollapse()
                                 onNavigate(Route.Equalizer)
+                            },
+                            onOpenVisual = {
+                                onCollapse()
+                                onNavigate(Route.Visualizer)
                             },
                             onOpenSleep = { showSleep = true },
                             onOpenTempo = { showTempo = true },
@@ -578,6 +648,7 @@ private fun playerbar(
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
     onOpenEq: () -> Unit,
+    onOpenVisual: () -> Unit,
     onOpenSleep: () -> Unit,
     onOpenTempo: () -> Unit,
 ) {
@@ -615,6 +686,11 @@ private fun playerbar(
                 onClick = onCycleRepeat,
             )
             baricon(
+                icon = ZIcons.Sparkles,
+                active = false,
+                onClick = onOpenVisual,
+            )
+            baricon(
                 icon = ZIcons.Equalizer,
                 active = eqEnabled,
                 onClick = onOpenEq,
@@ -649,6 +725,7 @@ private fun playerbg(
     stageHeight: Dp,
     fullBleedTop: Boolean,
     blurEnabled: Boolean,
+    blurRadius: Float,
     isDark: Boolean,
     baseBg: Color,
 ) {
@@ -662,10 +739,11 @@ private fun playerbg(
         activeArt = artworkUrl.orEmpty().ifBlank { fallbackUrl.orEmpty() }
         triedFallback = false
     }
-    val blurStyle = remember(blurEnabled, isDark, baseBg) {
+    val radDp = blurRadius.coerceIn(8f, 96f).dp
+    val blurStyle = remember(blurEnabled, radDp, isDark, baseBg) {
         HazeBlurStyle {
             blurEnabled(blurEnabled)
-            blurRadius(56.dp)
+            blurRadius(radDp)
             noiseFactor(0.05f)
             backgroundColor(baseBg)
             colorEffects(

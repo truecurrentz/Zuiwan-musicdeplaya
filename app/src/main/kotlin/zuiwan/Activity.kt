@@ -61,6 +61,9 @@ import zuiwan.screen.viewrecognize
 import zuiwan.screen.viewsearch
 import zuiwan.screen.viewsettings
 import zuiwan.screen.viewstats
+import zuiwan.screen.viewstudio
+import zuiwan.screen.viewvisual
+import zuiwan.sheet.editorsheet
 import zuiwan.sheet.pickersheet
 import zuiwan.sheet.infosheet
 import zuiwan.sheet.menusheet
@@ -126,6 +129,7 @@ private fun rootview(
 ) {
     val context = LocalContext.current
     val settings by hub.settings.collectAsState()
+    val pluginCss by hub.pluginCss.collectAsState()
     val playback by hub.pilot.state.collectAsState()
     val likedIds by hub.likedIds.collectAsState()
     val notice by hub.notice.collectAsState()
@@ -138,6 +142,7 @@ private fun rootview(
     var menuTrack by remember { mutableStateOf<Track?>(null) }
     var playlistTrack by remember { mutableStateOf<Track?>(null) }
     var infoTrack by remember { mutableStateOf<Track?>(null) }
+    var editTrack by remember { mutableStateOf<Track?>(null) }
     var permAsked by remember { mutableStateOf(false) }
 
     val notifPermLauncher = rememberLauncherForActivityResult(
@@ -225,6 +230,9 @@ private fun rootview(
         dynamicColors = settings.dynamicColors,
         blurEnabled = settings.blurEnabled,
         artworkUrl = playback.current?.trackart(),
+        settings = settings,
+        pluginCss = pluginCss,
+        forceFullscreen = nav.current is Route.Visualizer,
     ) {
         CompositionLocalProvider(LocalHaze provides rootHaze) {
             val hasMini = playback.current != null
@@ -236,7 +244,14 @@ private fun rootview(
                         .fillMaxSize()
                         .hazeSource(rootHaze),
                 ) {
-                    backdrop(artworkUrl = playback.current?.trackart(), intense = false)
+                    backdrop(
+                        artworkUrl = playback.current?.trackart(),
+                        intense = false,
+                        wallpaperPath = settings.wallpaperPath,
+                        motionPath = settings.motionBgPath,
+                        motionIsVideo = settings.motionIsVideo,
+                        bgDim = settings.bgDim,
+                    )
 
                     val activeRoute = nav.current
                     AnimatedContent(
@@ -322,6 +337,15 @@ private fun rootview(
                                     onBack = { nav.pop() },
                                     bottomPadding = contentBottom,
                                 )
+                                Route.Studio -> viewstudio(
+                                    onBack = { nav.pop() },
+                                    onNavigate = nav::open,
+                                    bottomPadding = contentBottom,
+                                )
+                                Route.Visualizer -> viewvisual(
+                                    onBack = { nav.pop() },
+                                    onOpenStudio = { nav.open(Route.Studio) },
+                                )
                                 Route.Settings -> viewsettings(
                                     onBack = { nav.pop() },
                                     onNavigate = nav::open,
@@ -335,7 +359,7 @@ private fun rootview(
                     }
                 }
 
-                if (nav.current !is Route.Login) {
+                if (nav.current !is Route.Login && nav.current !is Route.Visualizer) {
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -385,6 +409,18 @@ private fun rootview(
                         },
                         onAddToPlaylist = { playlistTrack = it },
                         onShowInfo = { infoTrack = it },
+                        onEditTrack = { editTrack = it },
+                    )
+                }
+
+                editTrack?.let { target ->
+                    editorsheet(
+                        track = target,
+                        onDismiss = { editTrack = null },
+                        onOpenEffects = {
+                            playerExpanded = false
+                            nav.open(Route.Equalizer)
+                        },
                     )
                 }
 

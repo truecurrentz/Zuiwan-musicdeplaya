@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zuiwan.audio.AudioPilot
 import zuiwan.audio.AudioVault
+import zuiwan.audio.LocalManager
 import zuiwan.audio.MusicRecognizer
 import zuiwan.data.AppSettings
 import zuiwan.data.BackupManager
@@ -35,15 +36,19 @@ import zuiwan.data.toentity
 import zuiwan.data.tomatch
 import zuiwan.data.tosummary
 import zuiwan.data.totrack
+import zuiwan.dsp.EffectsProcessor
 import zuiwan.dsp.EqualizerProcessor
 import zuiwan.dsp.NormalizerProcessor
+import zuiwan.dsp.SpectrumProcessor
 import zuiwan.lyrics.LyricsExtractor
 import zuiwan.model.AlbumSummary
 import zuiwan.model.ArtistRef
 import zuiwan.model.ArtistStat
 import zuiwan.model.ArtistSummary
+import zuiwan.model.AudioEffects
 import zuiwan.model.EqProfile
 import zuiwan.model.ExploreFeed
+import zuiwan.model.FontChoice
 import zuiwan.model.HomeFeed
 import zuiwan.model.MatchResult
 import zuiwan.model.MoodChip
@@ -51,6 +56,7 @@ import zuiwan.model.NoticeKind
 import zuiwan.model.NoticeState
 import zuiwan.model.PlaylistDetail
 import zuiwan.model.PlaylistSummary
+import zuiwan.model.PluginSpec
 import zuiwan.model.ReleaseNote
 import zuiwan.model.SessionData
 import zuiwan.model.StatsSummary
@@ -58,6 +64,7 @@ import zuiwan.model.StatsWindow
 import zuiwan.model.Track
 import zuiwan.model.TrackStat
 import zuiwan.model.UpdateStatus
+import zuiwan.model.islocal
 import zuiwan.model.trackart
 import zuiwan.model.upscaleart
 import app.zuiwan.BuildConfig
@@ -100,6 +107,9 @@ class Hub(val appContext: Context) {
 
     val normalizer: NormalizerProcessor = NormalizerProcessor()
     val equalizer: EqualizerProcessor = EqualizerProcessor()
+    val effects: EffectsProcessor = EffectsProcessor()
+    val spectrum: SpectrumProcessor = SpectrumProcessor()
+    val local: LocalManager = LocalManager(appContext, dao)
 
     val settings: StateFlow<AppSettings> = store.settings.stateIn(
         scope,
@@ -118,6 +128,25 @@ class Hub(val appContext: Context) {
         SharingStarted.Eagerly,
         EqProfile(),
     )
+
+    val audioEffects: StateFlow<AudioEffects> = store.effects.stateIn(
+        scope,
+        SharingStarted.Eagerly,
+        AudioEffects(),
+    )
+
+    private val pluginsFlow = MutableStateFlow<List<PluginSpec>>(local.builtinPlugins)
+    val plugins: StateFlow<List<PluginSpec>> = pluginsFlow.asStateFlow()
+
+    val pluginCss: StateFlow<String> = combine(pluginsFlow, settings) { list, s ->
+        list.filter { it.id in s.enabledPlugins && it.css.isNotBlank() }
+            .joinToString("\n") { it.css }
+    }.stateIn(scope, SharingStarted.Eagerly, "")
+
+    val pluginJs: StateFlow<String> = combine(pluginsFlow, settings) { list, s ->
+        list.filter { it.id in s.enabledPlugins && it.js.isNotBlank() }
+            .joinToString("\n") { it.js }
+    }.stateIn(scope, SharingStarted.Eagerly, "")
 
     val vault: AudioVault = AudioVault(
         context = appContext,
@@ -151,6 +180,10 @@ class Hub(val appContext: Context) {
     val downloadedIds: StateFlow<Set<String>> = downloadedTracks
         .map { list -> list.mapTo(HashSet()) { it.id } }
         .stateIn(scope, SharingStarted.Eagerly, emptySet())
+
+    val localTracks: StateFlow<List<Track>> = dao.localtracks()
+        .map { rows -> rows.map { it.totrack() } }
+        .stateIn(scope, SharingStarted.Lazily, emptyList())
 
     val historyTracks: StateFlow<List<Track>> = dao.recenttracks()
         .map { rows -> rows.map { it.totrack() } }
@@ -232,8 +265,32 @@ class Hub(val appContext: Context) {
 
     init {
         scope.launch {
+            pluginsFlow.value = local.loadplugins()
+        }
+        scope.launch {
             store.settings.collectLatest { s ->
                 tube.applylocale(s.contentCountry, s.contentLanguage)
+            }
+        }
+        scope.launch {
+            combine(store.effects, store.settings, pluginsFlow) { fx, s, plList ->
+                val activePl = plList.filter { it.id in s.enabledPlugins }
+                val plBass = activePl.maxOfOrNull { it.bassBoost } ?: 0f
+                val plWide = activePl.maxOfOrNull { it.stereoWide } ?: 0f
+                val plRev = activePl.maxOfOrNull { it.reverb } ?: 0f
+                val pl8d = activePl.any { it.spatial8d }
+                val plLim = activePl.any { it.nightLimit }
+                val hasPlFx = plBass > 0f || plWide > 0f || plRev > 0f || pl8d || plLim
+                fx.copy(
+                    enabled = fx.enabled || hasPlFx,
+                    bassBoost = maxOf(fx.bassBoost, plBass),
+                    stereoWide = maxOf(fx.stereoWide, plWide),
+                    reverb = maxOf(fx.reverb, plRev),
+                    spatial8d = fx.spatial8d || pl8d,
+                    nightLimit = fx.nightLimit || plLim,
+                )
+            }.collectLatest { merged ->
+                effects.applyfx(merged)
             }
         }
         scope.launch {
@@ -303,7 +360,9 @@ class Hub(val appContext: Context) {
                 at = if (nextLiked) System.currentTimeMillis() else null,
             )
             pilot.markliked(track.id, nextLiked)
-            tube.likeremote(track.id, nextLiked)
+            if (!track.islocal()) {
+                tube.likeremote(track.id, nextLiked)
+            }
         }
     }
 
@@ -454,7 +513,7 @@ class Hub(val appContext: Context) {
                 dao.putplaylist(pl.copy(artwork = art))
             }
             shownotice(NoticeKind.SUCCESS, "Added to ${pl?.title ?: "Playlist"}", track.title)
-            if (pl != null && !pl.remoteId.isNullOrBlank() && pl.editable && tube.isauthed()) {
+            if (pl != null && !pl.remoteId.isNullOrBlank() && pl.editable && tube.isauthed() && !track.islocal()) {
                 tube.addremote(pl.remoteId, track.id)
                 runCatching { sync.syncone(pl.id) }
             }
@@ -707,6 +766,166 @@ class Hub(val appContext: Context) {
         scope.launch {
             dao.clearrecognized()
             shownotice(NoticeKind.INFO, "Recognition History Cleared")
+        }
+    }
+
+    fun seteffects(next: AudioEffects) {
+        scope.launch {
+            store.saveeffects(next)
+        }
+    }
+
+    fun scanlocal() {
+        scope.launch {
+            shownotice(NoticeKind.LOADING, "Scanning Device Audio", "Indexing local songs and folders", 0.35f)
+            local.scandevice().onSuccess { count ->
+                shownotice(
+                    kind = NoticeKind.SUCCESS,
+                    title = "Local Library Ready",
+                    subtitle = if (count > 0) "$count device songs indexed" else "No audio files found on device",
+                )
+            }.onFailure { err ->
+                shownotice(
+                    kind = NoticeKind.ERROR,
+                    title = "Scan Failed",
+                    subtitle = err.message ?: "Grant audio permission and try again",
+                )
+            }
+        }
+    }
+
+    fun importaudio(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        scope.launch {
+            shownotice(NoticeKind.LOADING, "Importing Audio", "Reading ${uris.size} file(s)", 0.25f)
+            local.importuris(uris)
+                .onSuccess { addedCount ->
+                    if (addedCount > 0) {
+                        shownotice(
+                            kind = NoticeKind.SUCCESS,
+                            title = "Imported $addedCount Track(s)",
+                            subtitle = "Added to Local Library",
+                        )
+                    } else {
+                        shownotice(NoticeKind.ERROR, "Import Failed", "Unsupported audio file")
+                    }
+                }
+                .onFailure { err ->
+                    shownotice(NoticeKind.ERROR, "Import Failed", err.message ?: "Unable to read audio file")
+                }
+        }
+    }
+
+    fun saveedited(
+        track: Track,
+        title: String,
+        artist: String,
+        album: String,
+        artworkUri: Uri?,
+        trimStartMs: Long,
+        trimEndMs: Long,
+    ) {
+        scope.launch {
+            local.savemetadata(
+                track = track,
+                newTitle = title,
+                newArtist = artist,
+                newAlbum = album,
+                coverUri = artworkUri,
+                trimStartMs = trimStartMs,
+                trimEndMs = trimEndMs,
+            ).onSuccess { updated ->
+                pilot.updatetrack(updated)
+                shownotice(NoticeKind.SUCCESS, "Audio Updated", updated.title)
+            }.onFailure { err ->
+                shownotice(NoticeKind.ERROR, "Edit Failed", err.message ?: "Unable to save audio changes")
+            }
+        }
+    }
+
+    fun exportclip(track: Track, startMs: Long, endMs: Long) {
+        scope.launch {
+            shownotice(NoticeKind.LOADING, "Exporting Trimmed Clip", track.title, 0.45f)
+            local.exporttrim(track, startMs, endMs)
+                .onSuccess { clipTrack ->
+                    shownotice(NoticeKind.SUCCESS, "Clip Saved to Library", clipTrack.title)
+                }
+                .onFailure { err ->
+                    shownotice(NoticeKind.ERROR, "Clip Export Failed", err.message ?: "Format does not support direct muxing")
+                }
+        }
+    }
+
+    fun removelocal(track: Track) {
+        scope.launch {
+            dao.deletetrack(track.id)
+            shownotice(NoticeKind.INFO, "Removed from Local Library", track.title)
+        }
+    }
+
+    fun pickasset(uri: Uri, slot: String) {
+        scope.launch {
+            local.copyasset(uri, slot)
+                .onSuccess { (path, isVid) ->
+                    store.updatesettings { cur ->
+                        when (slot) {
+                            "wallpaper" -> cur.copy(wallpaperPath = path, motionBgPath = "", motionIsVideo = false)
+                            "motion" -> cur.copy(motionBgPath = path, motionIsVideo = isVid)
+                            "banner" -> cur.copy(bannerPath = path)
+                            "playerbg" -> cur.copy(playerBgPath = path)
+                            "font" -> cur.copy(fontChoice = FontChoice.CUSTOM, customFontPath = path)
+                            else -> cur
+                        }
+                    }
+                    shownotice(NoticeKind.SUCCESS, "Applied Custom Media", slot.replaceFirstChar { it.uppercase() })
+                }
+                .onFailure { err ->
+                    shownotice(NoticeKind.ERROR, "Unable to Load File", err.message ?: "Pick another file")
+                }
+        }
+    }
+
+    fun toggleplugin(pluginId: String) {
+        scope.launch {
+            val nextEnabled = pluginId !in settings.value.enabledPlugins
+            store.updatesettings { cur ->
+                val nextSet = if (nextEnabled) cur.enabledPlugins + pluginId else cur.enabledPlugins - pluginId
+                val skipSil = if (pluginId == "silence_trim") nextEnabled else cur.skipSilence
+                cur.copy(enabledPlugins = nextSet, skipSilence = skipSil)
+            }
+            val label = pluginsFlow.value.firstOrNull { it.id == pluginId }?.name ?: pluginId
+            shownotice(
+                kind = if (nextEnabled) NoticeKind.SUCCESS else NoticeKind.INFO,
+                title = if (nextEnabled) "Plugin Enabled" else "Plugin Disabled",
+                subtitle = label,
+            )
+        }
+    }
+
+    fun installplugin(uri: Uri) {
+        scope.launch {
+            local.installplugin(uri)
+                .onSuccess { spec ->
+                    pluginsFlow.value = local.loadplugins()
+                    store.updatesettings { cur ->
+                        cur.copy(enabledPlugins = cur.enabledPlugins + spec.id)
+                    }
+                    shownotice(NoticeKind.SUCCESS, "Plugin Installed", "${spec.name} v${spec.version}")
+                }
+                .onFailure { err ->
+                    shownotice(NoticeKind.ERROR, "Invalid Plugin", err.message ?: "Select a valid Zuiwan JSON plugin")
+                }
+        }
+    }
+
+    fun removeplugin(pluginId: String) {
+        scope.launch {
+            local.removeplugin(pluginId)
+            pluginsFlow.value = local.loadplugins()
+            store.updatesettings { cur ->
+                cur.copy(enabledPlugins = cur.enabledPlugins - pluginId)
+            }
+            shownotice(NoticeKind.INFO, "Plugin Removed")
         }
     }
 

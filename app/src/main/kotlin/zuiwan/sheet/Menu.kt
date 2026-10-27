@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import zuiwan.model.Track
 import zuiwan.model.artistline
 import zuiwan.model.fallbackart
+import zuiwan.model.islocal
 import zuiwan.model.trackart
 import zuiwan.state.LocalHub
 import zuiwan.theme.LocalGlass
@@ -49,6 +50,7 @@ fun menusheet(
     onNavigate: (Route) -> Unit,
     onAddToPlaylist: (Track) -> Unit,
     onShowInfo: (Track) -> Unit,
+    onEditTrack: (Track) -> Unit = {},
 ) {
     val hub = LocalHub.current
     val glassTokens = LocalGlass.current
@@ -119,28 +121,45 @@ fun menusheet(
                 hub.pilot.enqueue(track)
                 onDismiss()
             }
-            menurow(ZIcons.Radio, "Start instant radio") {
-                hub.pilot.audioplay(track, "${track.title} Radio", fetchRadio = true)
-                onDismiss()
+            if (!track.islocal()) {
+                menurow(ZIcons.Radio, "Start instant radio") {
+                    hub.pilot.audioplay(track, "${track.title} Radio", fetchRadio = true)
+                    onDismiss()
+                }
             }
             menurow(ZIcons.Playlist, "Add to playlist") {
                 onDismiss()
                 onAddToPlaylist(track)
             }
-            menurow(
-                icon = if (isDownloaded) ZIcons.Trash else ZIcons.Download,
-                label = when {
-                    activeProgress != null -> "Downloading ${(activeProgress * 100).toInt()}% (tap to cancel)"
-                    isDownloaded -> "Remove offline download"
-                    else -> "Download for offline"
-                },
-            ) {
-                when {
-                    activeProgress != null -> hub.vault.canceldownload(track.id)
-                    isDownloaded -> hub.vault.removedownload(track.id)
-                    else -> hub.vault.downloadtrack(track)
-                }
+            menurow(ZIcons.Scissors, "Edit audio & metadata") {
                 onDismiss()
+                onEditTrack(track)
+            }
+            menurow(ZIcons.Sliders, "Audio effects & EQ") {
+                onDismiss()
+                onNavigate(Route.Equalizer)
+            }
+            if (track.islocal()) {
+                menurow(ZIcons.Trash, "Remove from local library") {
+                    hub.removelocal(track)
+                    onDismiss()
+                }
+            } else {
+                menurow(
+                    icon = if (isDownloaded) ZIcons.Trash else ZIcons.Download,
+                    label = when {
+                        activeProgress != null -> "Downloading ${(activeProgress * 100).toInt()}% (tap to cancel)"
+                        isDownloaded -> "Remove offline download"
+                        else -> "Download for offline"
+                    },
+                ) {
+                    when {
+                        activeProgress != null -> hub.vault.canceldownload(track.id)
+                        isDownloaded -> hub.vault.removedownload(track.id)
+                        else -> hub.vault.downloadtrack(track)
+                    }
+                    onDismiss()
+                }
             }
 
             track.artists.firstOrNull()?.id?.let { artistId ->
@@ -159,16 +178,18 @@ fun menusheet(
                 onDismiss()
                 onShowInfo(track)
             }
-            menurow(ZIcons.Share, "Share link") {
-                val share = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(
-                        Intent.EXTRA_TEXT,
-                        "${track.title} - ${track.artistline()}\nhttps://music.youtube.com/watch?v=${track.id}",
-                    )
+            if (!track.islocal()) {
+                menurow(ZIcons.Share, "Share link") {
+                    val share = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(
+                            Intent.EXTRA_TEXT,
+                            "${track.title} - ${track.artistline()}\nhttps://music.youtube.com/watch?v=${track.id}",
+                        )
+                    }
+                    context.startActivity(Intent.createChooser(share, track.title))
+                    onDismiss()
                 }
-                context.startActivity(Intent.createChooser(share, track.title))
-                onDismiss()
             }
         }
     }

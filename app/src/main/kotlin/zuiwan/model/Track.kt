@@ -29,7 +29,14 @@ data class Track(
     val setVideoId: String? = null,
     val libraryAddToken: String? = null,
     val libraryRemoveToken: String? = null,
+    val localUri: String? = null,
+    val folderName: String? = null,
+    val trimStartMs: Long = 0L,
+    val trimEndMs: Long = 0L,
 )
+
+fun Track.islocal(): Boolean =
+    !localUri.isNullOrBlank() || id.startsWith("local_")
 
 @Serializable
 data class AudioSpec(

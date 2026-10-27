@@ -135,6 +135,7 @@ fun viewequalizer(
     val hub = LocalHub.current
     val glassTokens = LocalGlass.current
     val profile by hub.eq.collectAsState()
+    val fx by hub.audioEffects.collectAsState()
 
     val headerScroll = headerscroll()
     val listState = rememberLazyListState()
@@ -199,6 +200,102 @@ fun viewequalizer(
                         .padding(horizontal = 18.dp, vertical = 10.dp),
                 ) {
                     eqcanvas(profile = profile)
+                }
+            }
+
+            item(key = "fx_rack") {
+                glass(
+                    shape = RoundedCornerShape(22.dp),
+                    elevated = true,
+                    contentPadding = PaddingValues(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 6.dp),
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = "Audio Effects",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = glassTokens.ink,
+                            )
+                            Switch(
+                                checked = fx.enabled,
+                                onCheckedChange = { on -> hub.seteffects(fx.copy(enabled = on)) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = glassTokens.onAccent,
+                                    checkedTrackColor = glassTokens.accent,
+                                ),
+                            )
+                        }
+
+                        fxslider(
+                            label = "Bass Boost",
+                            valueText = "${(fx.bassBoost * 100).roundToInt()}%",
+                            value = fx.bassBoost,
+                            range = 0f..1f,
+                            onChange = { v -> hub.seteffects(fx.copy(enabled = true, bassBoost = v)) },
+                        )
+                        fxslider(
+                            label = "Stereo Widener",
+                            valueText = "${(fx.stereoWide * 100).roundToInt()}%",
+                            value = fx.stereoWide,
+                            range = 0f..1f,
+                            onChange = { v -> hub.seteffects(fx.copy(enabled = true, stereoWide = v)) },
+                        )
+                        fxslider(
+                            label = "Studio Reverb",
+                            valueText = "${(fx.reverb * 100).roundToInt()}%",
+                            value = fx.reverb,
+                            range = 0f..1f,
+                            onChange = { v -> hub.seteffects(fx.copy(enabled = true, reverb = v)) },
+                        )
+                        fxslider(
+                            label = "Channel Balance",
+                            valueText = when {
+                                fx.balance < -0.04f -> "L ${(-fx.balance * 100).roundToInt()}%"
+                                fx.balance > 0.04f -> "R ${(fx.balance * 100).roundToInt()}%"
+                                else -> "Center"
+                            },
+                            value = fx.balance,
+                            range = -1f..1f,
+                            onChange = { v -> hub.seteffects(fx.copy(enabled = true, balance = v)) },
+                        )
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            chip(
+                                label = "8D Orbit",
+                                selected = fx.enabled && fx.spatial8d,
+                                onClick = {
+                                    hub.seteffects(fx.copy(enabled = true, spatial8d = !fx.spatial8d))
+                                },
+                            )
+                            chip(
+                                label = "Night Limiter",
+                                selected = fx.enabled && fx.nightLimit,
+                                onClick = {
+                                    hub.seteffects(fx.copy(enabled = true, nightLimit = !fx.nightLimit))
+                                },
+                            )
+                            chip(
+                                label = "Reset FX",
+                                selected = false,
+                                onClick = {
+                                    hub.seteffects(zuiwan.model.AudioEffects())
+                                },
+                            )
+                        }
+                    }
                 }
             }
 
@@ -360,6 +457,36 @@ private fun eqcanvas(profile: EqProfile) {
             path = linePath,
             color = glassTokens.accent,
             style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round),
+        )
+    }
+}
+
+@Composable
+private fun fxslider(
+    label: String,
+    valueText: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onChange: (Float) -> Unit,
+) {
+    val glassTokens = LocalGlass.current
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(label, style = MaterialTheme.typography.titleSmall, color = glassTokens.ink)
+            Text(valueText, style = MaterialTheme.typography.labelLarge, color = glassTokens.accent)
+        }
+        Slider(
+            value = value.coerceIn(range.start, range.endInclusive),
+            onValueChange = onChange,
+            valueRange = range,
+            colors = SliderDefaults.colors(
+                thumbColor = glassTokens.accent,
+                activeTrackColor = glassTokens.accent,
+                inactiveTrackColor = glassTokens.glassBorder,
+            ),
         )
     }
 }

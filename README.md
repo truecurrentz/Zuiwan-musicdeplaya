@@ -22,20 +22,20 @@
   <tr>
     <td width="50%" valign="top">
 
-#### Playback
-- Stream songs, albums, playlists & music videos from YouTube Music
-- Gapless background playback with Media3 session controls
+#### Playback & Local Music
+- Stream songs, albums, playlists & music videos or play local MP3, FLAC, WAV, M4A, OGG & OPUS files
+- Device audio scanner, folder organization & SAF file importer
 - Offline downloads & smart stream caching
-- Skip silence & persistent queue restoration
-- Sleep timer with end-of-track stop
+- Built-in metadata/cover art editor, cue trimmer & `.m4a` clip exporter
+- Skip silence, sleep timer & persistent queue restoration
 
 </td>
     <td width="50%" valign="top">
 
-#### Audio & DSP
-- Loudness normalization (-14 LUFS ReplayGain)
+#### Audio Effects & DSP
+- Real-time Bass Boost, Stereo Widener, Studio Reverb, 8D Orbit, Channel Balance & Night Limiter
 - Real-time 10-band parametric biquad equalizer & preamp
-- Live frequency-response curve & studio presets
+- Loudness normalization (-14 LUFS ReplayGain)
 - Independent tempo & pitch control
 - Smooth crossfade ramp
 
@@ -44,21 +44,20 @@
   <tr>
     <td width="50%" valign="top">
 
-#### Lyrics & Discovery
-- Word-by-word & line-synced live lyrics (BetterLyrics, LrcLib, KuGou, YouTube Music)
-- Built-in **Recognize Music** acoustic fingerprinting with live soundwave orb & recognition history
-- Automatic CJK & Cyrillic romanization with tap-to-seek
-- Quick Picks, Keep Listening, Explore, Unique Songs, Moods & Charts
+#### Visualizer, Lyrics & Discovery
+- GPU **WebGL Shader Effects** (`Aurora`, `Nebula`, `Rings`, `Grid`, `Liquid`) & live 512-point FFT spectrum visualizers
+- **Syllable-Synced Lyrics** with progressive glow & CJK/Cyrillic romanization
+- Dedicated **Fullscreen Visualizer** stage plus custom Player banner & background
+- Built-in **Recognize Music** acoustic fingerprinting (`currents`) with recognition history
 
 </td>
     <td width="50%" valign="top">
 
-#### Frosted Glass UI & Library
-- iOS-inspired Frosted Glass interface with **Dark** and **White** themes & animated Dynamic Island live notifications
-- Real-time GPU backdrop blur on connected floating bars and immersive full-bleed player
-- Full **YouTube Music Sync** (liked songs, playlists, albums, artists & synced playlist creation)
-- Universal **Playlist Import & Export** (`.csv`, `.m3u`/`.m3u8`, `.json`, `.pls`, `.xspf`, `.txt`, YouTube & Spotify links) + `.zip` backup/restore
-- Automatic **App Update Notifications** with changelog viewer & direct APK downloads
+#### Studio Customization & Sync
+- **Dark** & **White** borderless Frosted Glass UI with live blur & opacity controls
+- **Zuiwan Studio**: custom accent colors, custom wallpapers, animated GIF / looping video backgrounds, custom `.ttf`/`.otf` fonts, **Custom CSS** engine, **Plugins**, and Compact / Fullscreen modes
+- Full **YouTube Music Sync** & universal **Playlist Import / Export** (`.csv`, `.m3u`/`.m3u8`, `.json`, `.pls`, `.xspf`, `.txt`, links) + `.zip` backup/restore
+- Android phone **Update Notifications** with changelog viewer & seamless signed APK updates
 
 </td>
   </tr>

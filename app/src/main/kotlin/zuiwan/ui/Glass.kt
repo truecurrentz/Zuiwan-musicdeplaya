@@ -225,23 +225,36 @@ fun scrollhost(
 fun backdrop(
     artworkUrl: String? = null,
     intense: Boolean = false,
+    wallpaperPath: String = "",
+    motionPath: String = "",
+    motionIsVideo: Boolean = false,
+    bgDim: Float = 0.56f,
     modifier: Modifier = Modifier,
 ) {
     val glassTokens = LocalGlass.current
     val cleanArt = remember(artworkUrl) { artworkUrl?.let { upscaleart(it, 544) }.orEmpty() }
+    val blurDp = glassTokens.blurRadius.dp
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(glassTokens.bg),
     ) {
-        if (intense && cleanArt.isNotBlank()) {
+        if (wallpaperPath.isNotBlank() || motionPath.isNotBlank()) {
+            mediabackdrop(
+                wallpaperPath = wallpaperPath,
+                motionPath = motionPath,
+                motionIsVideo = motionIsVideo,
+                blurRadius = glassTokens.blurRadius,
+                bgDim = bgDim,
+            )
+        } else if (intense && cleanArt.isNotBlank()) {
             AsyncImage(
                 model = cleanArt,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .blur(68.dp),
+                    .let { m -> if (glassTokens.blurEnabled) m.blur(blurDp) else m },
             )
             Box(
                 modifier = Modifier
@@ -301,19 +314,22 @@ fun barblur(
     val baseSurface = if (glassTokens.isDark) Color(0xFF131620) else Color(0xFFF6F8FC)
     if (hazeState != null && glassTokens.blurEnabled) {
         val hazeInput = remember(hazeState) { HazeInput.Sources(hazeState) }
-        val style = remember(glassTokens.isDark, baseSurface) {
+        val hazeRad = (glassTokens.blurRadius * 0.48f).coerceIn(6f, 52f).dp
+        val tintAlpha = ((if (glassTokens.isDark) 0.72f else 0.78f) * glassTokens.glassOpacity)
+            .coerceIn(0.20f, 0.95f)
+        val style = remember(glassTokens.isDark, baseSurface, hazeRad, tintAlpha) {
             HazeBlurStyle {
                 backgroundColor(baseSurface)
-                blurRadius(28.dp)
+                blurRadius(hazeRad)
                 noiseFactor(0.04f)
                 colorEffects(
                     listOf(
                         HazeColorEffect.tint(
-                            baseSurface.copy(alpha = if (glassTokens.isDark) 0.72f else 0.78f),
+                            baseSurface.copy(alpha = tintAlpha),
                         ),
                     ),
                 )
-                fallbackColorEffect(HazeColorEffect.tint(baseSurface.copy(alpha = 0.88f)))
+                fallbackColorEffect(HazeColorEffect.tint(baseSurface.copy(alpha = (tintAlpha + 0.14f).coerceAtMost(0.96f))))
             }
         }
         Box(
