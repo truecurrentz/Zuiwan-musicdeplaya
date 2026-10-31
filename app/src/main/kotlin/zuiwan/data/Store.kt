@@ -14,6 +14,7 @@ import kotlinx.serialization.json.Json
 import zuiwan.model.AudioEffects
 import zuiwan.model.EqProfile
 import zuiwan.model.FontChoice
+import zuiwan.model.MusicProvider
 import zuiwan.model.QualityMode
 import zuiwan.model.SessionData
 import zuiwan.model.ShaderPreset
@@ -63,6 +64,8 @@ data class AppSettings(
     val shaderPreset: ShaderPreset = ShaderPreset.AURORA,
     val playerVisualBg: Boolean = false,
     val enabledPlugins: Set<String> = emptySet(),
+    val musicProvider: MusicProvider = MusicProvider.AUTO,
+    val autoFallback: Boolean = true,
 )
 
 class PrefStore(private val context: Context) {

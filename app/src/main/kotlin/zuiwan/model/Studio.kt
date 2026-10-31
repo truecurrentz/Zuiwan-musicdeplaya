@@ -11,6 +11,18 @@ enum class VisualMode(val label: String) {
 }
 
 @Serializable
+enum class MusicProvider(val label: String, val detail: String) {
+    AUTO("Smart Auto", "Picks the fastest unthrottled provider in your region"),
+    YOUTUBE_FAST("YouTube Direct (Fast)", "Low-latency direct audio profile for fast startup"),
+    YOUTUBE_REMIX("YouTube Music", "Official Web Remix engine with full explicit support"),
+    PIPED("Piped Global Relay", "Global proxy edge servers that bypass ISP video throttling"),
+    INVIDIOUS("Invidious Proxy CDN", "Relays audio streams through non-Google proxy nodes"),
+    JIOSAAVN("JioSaavn 320k CDN", "High-speed 320 kbps AAC mirror on Akamai CDN"),
+    MONOCHROME("Monochrome HiFi", "Independent high-bitrate AAC mirror catalog"),
+    AUDIUS("Audius Network", "Decentralized open music CDN for indie, remixes & electronic"),
+}
+
+@Serializable
 enum class ShaderPreset(val label: String) {
     AURORA("Aurora Currents"),
     NEBULA("Cosmic Nebula"),

@@ -68,6 +68,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import zuiwan.model.MusicProvider
 import zuiwan.model.NoticeKind
 import zuiwan.model.QualityMode
 import zuiwan.model.ThemeChoice
@@ -143,6 +144,7 @@ fun viewsettings(
     val eqProfile by hub.eq.collectAsState()
     val downloadedTracks by hub.downloadedTracks.collectAsState()
     val updateState by hub.updateState.collectAsState()
+    val activeProvider by hub.streams.activeProvider.collectAsState()
 
     var page by rememberSaveable { mutableStateOf(SettingsPage.MAIN) }
 
@@ -150,6 +152,7 @@ fun viewsettings(
     var streamBytes by remember { mutableLongStateOf(initialUsage.first) }
     var downloadBytes by remember { mutableLongStateOf(initialUsage.second) }
 
+    var showProviderDialog by remember { mutableStateOf(false) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var showCountryDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
@@ -220,6 +223,36 @@ fun viewsettings(
             },
             onRefresh = { hub.loadchangelog(force = true) },
             onDismiss = { showChangelogSheet = false },
+        )
+    }
+
+    if (showProviderDialog) {
+        AlertDialog(
+            onDismissRequest = { showProviderDialog = false },
+            containerColor = glassTokens.glassStrong,
+            titleContentColor = glassTokens.ink,
+            textContentColor = glassTokens.ink,
+            title = { Text("Music Provider") },
+            text = {
+                LazyColumn(modifier = Modifier.height(380.dp)) {
+                    items(MusicProvider.entries, key = { it.name }) { provider ->
+                        choicerow(
+                            title = provider.label,
+                            subtitle = provider.detail,
+                            selected = settings.musicProvider == provider,
+                            onClick = {
+                                hub.setprovider(provider)
+                                showProviderDialog = false
+                            },
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showProviderDialog = false }) {
+                    Text("Close", color = glassTokens.inkSecondary)
+                }
+            },
         )
     }
 
@@ -488,7 +521,7 @@ fun viewsettings(
                                 navitem(
                                     icon = ZIcons.Waveform,
                                     title = "Player & Audio",
-                                    subtitle = "${qualitylabel(settings.quality)} quality - Audio effects & EQ",
+                                    subtitle = "${settings.musicProvider.label} - ${qualitylabel(settings.quality)} quality",
                                     position = GroupPos.MIDDLE,
                                     onClick = { page = SettingsPage.AUDIO },
                                 )
@@ -664,10 +697,27 @@ fun viewsettings(
                             grouptitle("Streaming & DSP")
                             groupbox {
                                 navitem(
+                                    icon = ZIcons.Globe,
+                                    title = "Music Provider",
+                                    subtitle = providerlabel(settings.musicProvider, activeProvider),
+                                    position = GroupPos.TOP,
+                                    onClick = { showProviderDialog = true },
+                                )
+                                switchitem(
+                                    icon = ZIcons.Sync,
+                                    title = "Auto Fallback on Buffering",
+                                    subtitle = "Switch to another provider automatically if playback stalls",
+                                    checked = settings.autoFallback,
+                                    position = GroupPos.MIDDLE,
+                                    onToggle = { v ->
+                                        scope.launch { hub.store.updatesettings { it.copy(autoFallback = v) } }
+                                    },
+                                )
+                                navitem(
                                     icon = ZIcons.Waveform,
                                     title = "Streaming Quality",
                                     subtitle = qualitylabel(settings.quality),
-                                    position = GroupPos.TOP,
+                                    position = GroupPos.MIDDLE,
                                     onClick = { showQualityDialog = true },
                                 )
                                 navitem(
@@ -1597,6 +1647,16 @@ private fun legend(color: Color, label: String) {
         )
     }
 }
+
+private fun providerlabel(
+    chosen: MusicProvider,
+    active: MusicProvider,
+): String =
+    if (chosen == MusicProvider.AUTO) {
+        "Smart Auto - Active: ${active.label}"
+    } else {
+        "${chosen.label} - ${chosen.detail}"
+    }
 
 private fun qualitylabel(mode: QualityMode): String = when (mode) {
     QualityMode.HIGH -> "High"

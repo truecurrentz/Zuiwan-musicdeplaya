@@ -37,6 +37,7 @@ coil = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 palette = { module = "androidx.palette:palette", version.ref = "palette" }
 media3 = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
+media3-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
 media3-okhttp = { module = "androidx.media3:media3-datasource-okhttp", version.ref = "media3" }
 media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }

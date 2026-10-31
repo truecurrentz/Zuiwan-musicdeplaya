@@ -23,6 +23,7 @@
     <td width="50%" valign="top">
 
 #### Playback & Local Music
+- Multi-provider streaming (`Smart Auto`, `YouTube Direct`, `YouTube Music`, `Piped`, `Invidious`, `JioSaavn 320k`, `Monochrome HiFi`, `Audius`) with automatic anti-buffering failover
 - Stream songs, albums, playlists & music videos or play local MP3, FLAC, WAV, M4A, OGG & OPUS files
 - Device audio scanner, folder organization & SAF file importer
 - Offline downloads & smart stream caching

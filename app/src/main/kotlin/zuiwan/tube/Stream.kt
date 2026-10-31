@@ -14,9 +14,13 @@ import com.metrolist.innertubex.extraction.YtConfigParser
 import com.metrolist.innertubex.extraction.YtConfigParserImpl
 import com.metrolist.innertubex.extraction.generateClientPlaybackNonce
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import zuiwan.model.AudioSpec
+import zuiwan.model.MusicProvider
 import zuiwan.model.QualityMode
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.ExperimentalTime
@@ -38,8 +42,14 @@ class StreamEngine(
 ) {
     private val lock = Mutex()
     private val tokenMint = TokenMint(context)
+    private val mirrors = MirrorResolver()
     private val failedClients = ConcurrentHashMap<String, Pair<Set<String>, Long>>()
+    private val failedProviders = ConcurrentHashMap<String, Pair<Set<MusicProvider>, Long>>()
+    private val providerPenalty = ConcurrentHashMap<MusicProvider, Pair<Int, Long>>()
     private val streamCache = ConcurrentHashMap<String, ResolvedAudio>()
+
+    private val activeProviderFlow = MutableStateFlow(MusicProvider.YOUTUBE_FAST)
+    val activeProvider: StateFlow<MusicProvider> = activeProviderFlow.asStateFlow()
 
     @Volatile
     private var cachedGen = -1L
@@ -69,10 +79,22 @@ class StreamEngine(
             set(value) = prefs.edit().putString("etag", value).apply()
     }
 
-    fun peekstream(videoId: String): ResolvedAudio? {
+    fun peekstream(
+        videoId: String,
+        preferred: MusicProvider = MusicProvider.AUTO,
+    ): ResolvedAudio? {
         val hit = streamCache[videoId] ?: return null
-        if (System.currentTimeMillis() + 15_000L >= hit.expiresAtMs) {
+        val now = System.currentTimeMillis()
+        if (now + 15_000L >= hit.expiresAtMs) {
             streamCache.remove(videoId)
+            return null
+        }
+        val blocked = excludedproviders(videoId, now)
+        if (hit.spec.provider in blocked) {
+            streamCache.remove(videoId)
+            return null
+        }
+        if (preferred != MusicProvider.AUTO && hit.spec.provider != preferred && preferred !in blocked) {
             return null
         }
         return hit
@@ -82,12 +104,47 @@ class StreamEngine(
         streamCache.remove(videoId)
     }
 
+    fun clearcached() {
+        streamCache.clear()
+        failedProviders.clear()
+        failedClients.clear()
+    }
+
     fun markfailed(videoId: String, clientName: String) {
+        markstalled(videoId, streamCache[videoId]?.spec?.provider, clientName)
+    }
+
+    fun markstalled(
+        videoId: String,
+        provider: MusicProvider?,
+        clientName: String?,
+    ) {
         dropstream(videoId)
         val now = System.currentTimeMillis()
-        failedClients.compute(videoId) { _, existing ->
-            val prev = existing?.takeIf { now - it.second < 300_000L }?.first.orEmpty()
-            (prev + clientName) to now
+        if (!clientName.isNullOrBlank()) {
+            failedClients.compute(videoId) { _, existing ->
+                val prev = existing?.takeIf { now - it.second < 300_000L }?.first.orEmpty()
+                (prev + clientName) to now
+            }
+        }
+        if (provider != null && provider != MusicProvider.AUTO) {
+            failedProviders.compute(videoId) { _, existing ->
+                val prev = existing?.takeIf { now - it.second < 300_000L }?.first.orEmpty()
+                (prev + provider) to now
+            }
+            providerPenalty.compute(provider) { _, existing ->
+                val prev = existing?.takeIf { now - it.second < 600_000L }?.first ?: 0
+                (prev + 2).coerceAtMost(20) to now
+            }
+        }
+    }
+
+    fun markhealthy(provider: MusicProvider) {
+        if (provider == MusicProvider.AUTO) return
+        val now = System.currentTimeMillis()
+        providerPenalty.computeIfPresent(provider) { _, existing ->
+            val next = (existing.first - 1).coerceAtLeast(0)
+            if (next == 0) null else next to now
         }
     }
 
@@ -99,44 +156,213 @@ class StreamEngine(
         videoId: String,
         quality: QualityMode,
         explicit: Boolean = false,
+        preferred: MusicProvider = MusicProvider.AUTO,
+        allowFallback: Boolean = true,
+        hint: TrackHint = TrackHint(explicit = explicit),
     ): Result<ResolvedAudio> {
-        peekstream(videoId)?.let { return Result.success(it) }
+        peekstream(videoId, preferred)?.let {
+            activeProviderFlow.value = it.spec.provider
+            return Result.success(it)
+        }
         return try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            val mappedQuality = when (quality) {
-                QualityMode.HIGH -> AudioQuality.HIGH
-                QualityMode.LOW -> AudioQuality.LOW
-                QualityMode.AUTO -> if (cm?.isActiveNetworkMetered == true) AudioQuality.LOW else AudioQuality.AUTO
-            }
-            val hints = ContentHints(isExplicit = explicit, wantVideo = false)
-                .withStreamCapabilities(
-                    allowHls = false,
-                    allowSabr = false,
-                    allowBoundedRange = true,
-                )
             val now = System.currentTimeMillis()
-            val excluded = failedClients[videoId]
-                ?.takeIf { now - it.second < 300_000L }
-                ?.first
-                .orEmpty()
-
-            val extracted = extractor().extract(
+            val chain = providerchain(
+                preferred = preferred,
+                allowFallback = allowFallback,
                 videoId = videoId,
-                hints = hints,
-                excludedClients = excluded,
-                audioQuality = mappedQuality,
-                clientPlaybackNonce = generateClientPlaybackNonce(),
-            ) ?: error("No playable stream resolved for $videoId")
+                hasMeta = hint.title.isNotBlank(),
+                now = now,
+            )
 
-            val resolved = extracted.toresolved()
-            streamCache[videoId] = resolved
-            Result.success(resolved)
+            var lastErr: Throwable? = null
+            for (candidate in chain) {
+                val resolved = try {
+                    resolveone(
+                        provider = candidate,
+                        videoId = videoId,
+                        quality = quality,
+                        hint = hint.copy(explicit = explicit || hint.explicit),
+                        now = now,
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    lastErr = e
+                    null
+                }
+                if (resolved != null) {
+                    streamCache[videoId] = resolved
+                    activeProviderFlow.value = resolved.spec.provider
+                    return Result.success(resolved)
+                } else {
+                    providerPenalty.compute(candidate) { _, existing ->
+                        val prev = existing?.takeIf { now - it.second < 600_000L }?.first ?: 0
+                        (prev + 1).coerceAtMost(20) to now
+                    }
+                }
+            }
+
+            error(lastErr?.message ?: "No playable stream resolved across music providers for $videoId")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
+
+    private fun providerchain(
+        preferred: MusicProvider,
+        allowFallback: Boolean,
+        videoId: String,
+        hasMeta: Boolean,
+        now: Long,
+    ): List<MusicProvider> {
+        val blocked = excludedproviders(videoId, now)
+        val baseOrder = listOf(
+            MusicProvider.YOUTUBE_FAST,
+            MusicProvider.PIPED,
+            MusicProvider.JIOSAAVN,
+            MusicProvider.INVIDIOUS,
+            MusicProvider.MONOCHROME,
+            MusicProvider.YOUTUBE_REMIX,
+            MusicProvider.AUDIUS,
+        )
+
+        val eligible = baseOrder.filter { p ->
+            hasMeta || p !in META_PROVIDERS || p == preferred
+        }
+
+        val ranked = eligible.sortedWith(
+            compareBy<MusicProvider> { it in blocked }
+                .thenBy { penaltyscore(it, now) },
+        )
+
+        if (preferred == MusicProvider.AUTO) {
+            return if (allowFallback) ranked else listOfNotNull(ranked.firstOrNull())
+        }
+
+        if (!allowFallback) {
+            return listOf(preferred)
+        }
+
+        val others = ranked.filterNot { it == preferred }
+        return if (preferred in blocked) {
+            others + preferred
+        } else {
+            listOf(preferred) + others
+        }
+    }
+
+    private suspend fun resolveone(
+        provider: MusicProvider,
+        videoId: String,
+        quality: QualityMode,
+        hint: TrackHint,
+        now: Long,
+    ): ResolvedAudio? =
+        when (provider) {
+            MusicProvider.AUTO,
+            MusicProvider.YOUTUBE_FAST,
+            -> resolveyoutube(
+                videoId = videoId,
+                quality = quality,
+                explicit = hint.explicit,
+                providerTag = MusicProvider.YOUTUBE_FAST,
+                overrideIds = emptyList(),
+                extraExcluded = setOf("WEB_REMIX"),
+                now = now,
+            )
+
+            MusicProvider.YOUTUBE_REMIX -> resolveyoutube(
+                videoId = videoId,
+                quality = quality,
+                explicit = hint.explicit,
+                providerTag = MusicProvider.YOUTUBE_REMIX,
+                overrideIds = listOf("WEB_REMIX", "TVHTML5_SIMPLY", "MWEB"),
+                extraExcluded = emptySet(),
+                now = now,
+            )
+
+            MusicProvider.PIPED -> mirrors.resolvepiped(videoId, quality)
+            MusicProvider.INVIDIOUS -> mirrors.resolveinvidious(videoId, quality)
+            MusicProvider.JIOSAAVN -> mirrors.resolvesaavn(videoId, hint, quality)
+            MusicProvider.MONOCHROME -> mirrors.resolvemono(videoId, hint, quality)
+            MusicProvider.AUDIUS -> mirrors.resolveaudius(videoId, hint)
+        }
+
+    private suspend fun resolveyoutube(
+        videoId: String,
+        quality: QualityMode,
+        explicit: Boolean,
+        providerTag: MusicProvider,
+        overrideIds: List<String>,
+        extraExcluded: Set<String>,
+        now: Long,
+    ): ResolvedAudio? {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val mappedQuality = when (quality) {
+            QualityMode.HIGH -> AudioQuality.HIGH
+            QualityMode.LOW -> AudioQuality.LOW
+            QualityMode.AUTO -> if (cm?.isActiveNetworkMetered == true) AudioQuality.LOW else AudioQuality.AUTO
+        }
+        val excluded = failedClients[videoId]
+            ?.takeIf { now - it.second < 300_000L }
+            ?.first
+            .orEmpty() + extraExcluded
+
+        val ext = extractor()
+        for (overrideId in overrideIds) {
+            if (overrideId in excluded) continue
+            val overrideHints = ContentHints(
+                isExplicit = explicit,
+                wantVideo = false,
+                playbackClientOverrideId = overrideId,
+            ).withStreamCapabilities(
+                allowHls = false,
+                allowSabr = false,
+                allowBoundedRange = true,
+            )
+            val hit = runCatching {
+                ext.extract(
+                    videoId = videoId,
+                    hints = overrideHints,
+                    excludedClients = excluded,
+                    audioQuality = mappedQuality,
+                    clientPlaybackNonce = generateClientPlaybackNonce(),
+                )
+            }.getOrNull()
+            if (hit != null) {
+                return hit.toresolved(providerTag)
+            }
+        }
+
+        val hints = ContentHints(isExplicit = explicit, wantVideo = false)
+            .withStreamCapabilities(
+                allowHls = false,
+                allowSabr = false,
+                allowBoundedRange = true,
+            )
+        val extracted = ext.extract(
+            videoId = videoId,
+            hints = hints,
+            excludedClients = excluded,
+            audioQuality = mappedQuality,
+            clientPlaybackNonce = generateClientPlaybackNonce(),
+        ) ?: return null
+        return extracted.toresolved(providerTag)
+    }
+
+    private fun excludedproviders(videoId: String, now: Long): Set<MusicProvider> =
+        failedProviders[videoId]
+            ?.takeIf { now - it.second < 300_000L }
+            ?.first
+            .orEmpty()
+
+    private fun penaltyscore(provider: MusicProvider, now: Long): Int =
+        providerPenalty[provider]
+            ?.takeIf { now - it.second < 600_000L }
+            ?.first
+            ?: 0
 
     private suspend fun extractor(): InnerTubeExtractor {
         val tube = innerTubeProvider()
@@ -181,7 +407,7 @@ class StreamEngine(
         }
 
     @OptIn(ExperimentalTime::class)
-    private fun ExtractedStream.toresolved(): ResolvedAudio {
+    private fun ExtractedStream.toresolved(providerTag: MusicProvider): ResolvedAudio {
         val nowMs = System.currentTimeMillis()
         val expMs = expiresAt?.toEpochMilliseconds() ?: (nowMs + 300_000L)
         val spec = AudioSpec(
@@ -195,6 +421,7 @@ class StreamEngine(
             loudnessDb = loudnessDb,
             perceptualDb = perceptualLoudnessDb,
             client = clientName,
+            provider = providerTag,
         )
         return ResolvedAudio(
             videoId = videoId,
@@ -211,5 +438,11 @@ class StreamEngine(
     private companion object {
         const val CONFIG_URL =
             "https://raw.githubusercontent.com/ZemerTeam/zemer-cipher/master/library/src/main/assets/player_configs.json"
+
+        val META_PROVIDERS = setOf(
+            MusicProvider.JIOSAAVN,
+            MusicProvider.MONOCHROME,
+            MusicProvider.AUDIUS,
+        )
     }
 }

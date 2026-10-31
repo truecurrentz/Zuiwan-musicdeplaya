@@ -24,6 +24,7 @@ import zuiwan.audio.AudioPilot
 import zuiwan.audio.AudioVault
 import zuiwan.audio.LocalManager
 import zuiwan.audio.MusicRecognizer
+import zuiwan.audio.QueueBook
 import zuiwan.data.AppSettings
 import zuiwan.data.BackupManager
 import zuiwan.data.MusicDao
@@ -52,6 +53,7 @@ import zuiwan.model.FontChoice
 import zuiwan.model.HomeFeed
 import zuiwan.model.MatchResult
 import zuiwan.model.MoodChip
+import zuiwan.model.MusicProvider
 import zuiwan.model.NoticeKind
 import zuiwan.model.NoticeState
 import zuiwan.model.PlaylistDetail
@@ -148,11 +150,16 @@ class Hub(val appContext: Context) {
             .joinToString("\n") { it.js }
     }.stateIn(scope, SharingStarted.Eagerly, "")
 
+    @Volatile
+    private var bookRef: QueueBook? = null
+
     val vault: AudioVault = AudioVault(
         context = appContext,
         dao = dao,
         streamEngine = streams,
         qualityProvider = { settings.value.quality },
+        providerMode = { settings.value.musicProvider to settings.value.autoFallback },
+        trackLookup = { id -> bookRef?.lookup(id) },
     )
 
     val pilot: AudioPilot = AudioPilot(
@@ -163,7 +170,7 @@ class Hub(val appContext: Context) {
         lyricsExtractor = lyrics,
         equalizer = equalizer,
         vault = vault,
-    )
+    ).also { bookRef = it.book }
 
     val likedTracks: StateFlow<List<Track>> = dao.likedtracks()
         .map { rows -> rows.map { it.totrack() } }
@@ -981,6 +988,22 @@ class Hub(val appContext: Context) {
     fun hidenotice() {
         noticeHideJob?.cancel()
         noticeFlow.value = noticeFlow.value.copy(visible = false)
+    }
+
+    fun setprovider(provider: MusicProvider) {
+        scope.launch {
+            store.updatesettings { it.copy(musicProvider = provider) }
+            streams.clearcached()
+            val curId = pilot.state.value.current?.id
+            if (curId != null && !curId.startsWith("local_") && curId !in downloadedIds.value) {
+                pilot.reloadstream()
+            }
+            shownotice(
+                NoticeKind.SUCCESS,
+                "Provider: ${provider.label}",
+                provider.detail,
+            )
+        }
     }
 
     fun savesession(next: SessionData) {

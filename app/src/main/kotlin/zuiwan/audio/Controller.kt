@@ -155,6 +155,24 @@ class AudioPilot(
         }
     }
 
+    fun reloadstream() {
+        scope.launch {
+            val p = activeplayer() ?: return@launch
+            val curId = p.currentMediaItem?.mediaId ?: return@launch
+            if (curId.startsWith("local_")) return@launch
+            vault.evictstream(curId)
+            val wasPlaying = p.playWhenReady
+            val idx = p.currentMediaItemIndex
+            val pos = p.currentPosition.coerceAtLeast(0L)
+            p.stop()
+            if (idx in 0 until p.mediaItemCount) {
+                p.seekTo(idx, pos)
+            }
+            p.prepare()
+            if (wasPlaying) p.play()
+        }
+    }
+
     private fun activeplayer(): Player? = controller ?: directPlayer
 
     private fun withplayer(block: (Player) -> Unit) {

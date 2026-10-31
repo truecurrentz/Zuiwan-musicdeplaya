@@ -50,6 +50,7 @@ data class AudioSpec(
     val loudnessDb: Double? = null,
     val perceptualDb: Double? = null,
     val client: String = "",
+    val provider: MusicProvider = MusicProvider.YOUTUBE_FAST,
 )
 
 @Serializable

@@ -13,6 +13,7 @@ import zuiwan.model.ArtistSummary
 import zuiwan.model.AudioSpec
 import zuiwan.model.LyricPayload
 import zuiwan.model.MatchResult
+import zuiwan.model.MusicProvider
 import zuiwan.model.PlaylistSummary
 import zuiwan.model.Track
 import zuiwan.model.trackart
@@ -308,6 +309,15 @@ fun FormatEntity.tospec(): AudioSpec =
         loudnessDb = loudnessDb,
         perceptualDb = perceptualDb,
         client = client,
+        provider = when (client.uppercase()) {
+            "PIPED" -> MusicProvider.PIPED
+            "INVIDIOUS" -> MusicProvider.INVIDIOUS
+            "JIOSAAVN" -> MusicProvider.JIOSAAVN
+            "MONOCHROME" -> MusicProvider.MONOCHROME
+            "AUDIUS" -> MusicProvider.AUDIUS
+            "WEB_REMIX", "TVHTML5_SIMPLY", "MWEB" -> MusicProvider.YOUTUBE_REMIX
+            else -> MusicProvider.YOUTUBE_FAST
+        },
     )
 
 fun AudioSpec.toentity(): FormatEntity =

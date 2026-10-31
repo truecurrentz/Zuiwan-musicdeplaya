@@ -12,7 +12,6 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
-import androidx.media3.datasource.cache.ContentMetadata
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.NoOpCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
@@ -32,12 +31,16 @@ import okhttp3.OkHttpClient
 import zuiwan.data.MusicDao
 import zuiwan.data.toentity
 import zuiwan.data.tospec
+import zuiwan.data.totrack
 import zuiwan.dsp.NormalizerProcessor
 import zuiwan.model.AudioSpec
+import zuiwan.model.MusicProvider
 import zuiwan.model.QualityMode
 import zuiwan.model.Track
+import zuiwan.model.artistline
 import zuiwan.tube.ResolvedAudio
 import zuiwan.tube.StreamEngine
+import zuiwan.tube.TrackHint
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -48,6 +51,8 @@ class AudioVault(
     private val dao: MusicDao,
     private val streamEngine: StreamEngine,
     private val qualityProvider: () -> QualityMode,
+    private val providerMode: () -> Pair<MusicProvider, Boolean> = { MusicProvider.AUTO to true },
+    private val trackLookup: (String) -> Track? = { null },
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -66,8 +71,8 @@ class AudioVault(
     )
 
     private val okHttp = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(25, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -82,55 +87,34 @@ class AudioVault(
 
     private val jobs = ConcurrentHashMap<String, Job>()
 
-    private fun chainedcache(enableWriteStream: Boolean): DataSource.Factory {
-        val streamLayer = CacheDataSource.Factory()
-            .setCache(streamCache)
-            .setUpstreamDataSourceFactory(networkFactory)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-            .apply {
-                if (!enableWriteStream) setCacheWriteDataSinkFactory(null)
-            }
-
-        return CacheDataSource.Factory()
-            .setCache(downloadCache)
-            .setUpstreamDataSourceFactory(streamLayer)
-            .setCacheWriteDataSinkFactory(null)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-    }
-
-    fun playbacksource(normalizer: NormalizerProcessor): DataSource.Factory {
-        val remoteCache = ResolvingDataSource.Factory(chainedcache(enableWriteStream = true)) { spec ->
+    private fun resolvingupstream(normalizer: NormalizerProcessor): DataSource.Factory =
+        ResolvingDataSource.Factory(networkFactory) { spec ->
             val scheme = spec.uri.scheme?.lowercase().orEmpty()
             if (scheme == "content" || scheme == "file") {
                 return@Factory spec
             }
             val mediaId = spec.key ?: spec.uri.lastPathSegment ?: error("Missing track id")
-            val stored = runBlocking(Dispatchers.IO) { dao.getformat(mediaId)?.tospec() }
-            if (stored != null) {
-                normalizer.setloudness(stored.loudnessDb, stored.perceptualDb)
-                activeSpecFlow.value = stored
-            }
-
-            val knownLen = stored?.lengthBytes?.takeIf { it > 0L }
-                ?: ContentMetadata.getContentLength(downloadCache.getContentMetadata(mediaId)).takeIf { it > 0L }
-            val probeLen = when {
-                spec.length >= 0L -> spec.length
-                knownLen != null -> (knownLen - spec.position).coerceAtLeast(1L)
-                else -> 524_288L
-            }
-
-            if (downloadCache.isCached(mediaId, spec.position, probeLen) ||
-                streamCache.isCached(mediaId, spec.position, probeLen)
-            ) {
-                return@Factory spec
-            }
+            val (preferred, allowFallback) = providerMode()
 
             val resolved = runBlocking(Dispatchers.IO) {
-                val entity = dao.gettrack(mediaId)
+                val track = trackLookup(mediaId) ?: dao.gettrack(mediaId)?.totrack()
+                val hint = if (track != null) {
+                    TrackHint(
+                        title = track.title,
+                        artist = track.artistline(),
+                        durationSec = track.duration,
+                        explicit = track.explicit,
+                    )
+                } else {
+                    TrackHint()
+                }
                 streamEngine.extractstream(
                     videoId = mediaId,
                     quality = qualityProvider(),
-                    explicit = entity?.explicit ?: false,
+                    explicit = hint.explicit,
+                    preferred = preferred,
+                    allowFallback = allowFallback,
+                    hint = hint,
                 )
             }.getOrElse { err ->
                 throw PlaybackException(
@@ -147,7 +131,45 @@ class AudioVault(
             }
             spec.withresolved(resolved)
         }
-        return DefaultDataSource.Factory(appContext, remoteCache)
+
+    private fun chainedcache(
+        enableWriteStream: Boolean,
+        normalizer: NormalizerProcessor,
+    ): DataSource.Factory {
+        val upstream = resolvingupstream(normalizer)
+        val streamLayer = CacheDataSource.Factory()
+            .setCache(streamCache)
+            .setUpstreamDataSourceFactory(upstream)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+            .apply {
+                if (!enableWriteStream) setCacheWriteDataSinkFactory(null)
+            }
+
+        return CacheDataSource.Factory()
+            .setCache(downloadCache)
+            .setUpstreamDataSourceFactory(streamLayer)
+            .setCacheWriteDataSinkFactory(null)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
+
+    fun playbacksource(normalizer: NormalizerProcessor): DataSource.Factory {
+        val cachedChain = chainedcache(enableWriteStream = true, normalizer = normalizer)
+        val metaWrapped = ResolvingDataSource.Factory(cachedChain) { spec ->
+            val scheme = spec.uri.scheme?.lowercase().orEmpty()
+            if (scheme == "content" || scheme == "file") {
+                return@Factory spec
+            }
+            val mediaId = spec.key ?: spec.uri.lastPathSegment ?: return@Factory spec
+            if (activeSpecFlow.value?.id != mediaId) {
+                val stored = runBlocking(Dispatchers.IO) { dao.getformat(mediaId)?.tospec() }
+                if (stored != null) {
+                    normalizer.setloudness(stored.loudnessDb, stored.perceptualDb)
+                    activeSpecFlow.value = stored
+                }
+            }
+            spec
+        }
+        return DefaultDataSource.Factory(appContext, metaWrapped)
     }
 
     fun downloadtrack(track: Track) {
@@ -158,24 +180,24 @@ class AudioVault(
                 if (dao.gettrack(track.id) == null) {
                     dao.puttrack(track.toentity())
                 }
+                val (preferred, allowFallback) = providerMode()
+                val hint = TrackHint(
+                    title = track.title,
+                    artist = track.artistline(),
+                    durationSec = track.duration,
+                    explicit = track.explicit,
+                )
                 val resolved = streamEngine.extractstream(
                     videoId = track.id,
                     quality = QualityMode.HIGH,
                     explicit = track.explicit,
+                    preferred = preferred,
+                    allowFallback = allowFallback,
+                    hint = hint,
                 ).getOrThrow()
 
                 dao.putformat(resolved.spec.toentity())
 
-                val dlSourceFactory = ResolvingDataSource.Factory(
-                    CacheDataSource.Factory()
-                        .setCache(downloadCache)
-                        .setUpstreamDataSourceFactory(networkFactory)
-                        .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR),
-                ) { spec ->
-                    spec.withresolved(resolved)
-                }
-
-                val cacheDs = (dlSourceFactory.createDataSource() as ResolvingDataSource)
                 val innerCacheDs = CacheDataSource.Factory()
                     .setCache(downloadCache)
                     .setUpstreamDataSourceFactory(
@@ -202,7 +224,6 @@ class AudioVault(
                         progressMap.update { it + (track.id to frac) }
                     }
                 }
-                cacheDs.close()
                 writer.cache()
                 dao.setdownloaded(track.id, true, System.currentTimeMillis())
                 progressMap.update { it - track.id }
@@ -233,6 +254,10 @@ class AudioVault(
         }
     }
 
+    fun evictstream(trackId: String) {
+        runCatching { streamCache.removeResource(trackId) }
+    }
+
     fun clearcache() {
         scope.launch {
             val keys = streamCache.keys.toList()
@@ -250,10 +275,13 @@ private fun DataSpec.withresolved(stream: ResolvedAudio): DataSpec {
     if ((!stream.requireBoundedRange && !stream.useRangeChunks) || stream.rangeChunkBytes <= 0L) {
         return resolved
     }
-    val bounded = if (length == C.LENGTH_UNSET.toLong()) {
+    var bounded = if (length == C.LENGTH_UNSET.toLong()) {
         stream.rangeChunkBytes
     } else {
         minOf(length, stream.rangeChunkBytes)
+    }
+    if (stream.spec.lengthBytes > position) {
+        bounded = minOf(bounded, stream.spec.lengthBytes - position)
     }
     return resolved.subrange(0, bounded)
 }
