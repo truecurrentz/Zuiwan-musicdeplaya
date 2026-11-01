@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import zuiwan.audio.AudioPilot
 import zuiwan.audio.AudioVault
@@ -106,6 +108,7 @@ class Hub(val appContext: Context) {
     private val noticeFlow = MutableStateFlow(NoticeState())
     val notice: StateFlow<NoticeState> = noticeFlow.asStateFlow()
     private var noticeHideJob: Job? = null
+    private val reorderMutex = Mutex()
 
     val normalizer: NormalizerProcessor = NormalizerProcessor()
     val equalizer: EqualizerProcessor = EqualizerProcessor()
@@ -539,18 +542,10 @@ class Hub(val appContext: Context) {
     }
 
     fun reorderplaylist(playlistId: String, orderedTrackIds: List<String>) {
+        if (orderedTrackIds.isEmpty()) return
         scope.launch {
-            val oldLinks = dao.playlistlinks(playlistId).associateBy { it.trackId }
-            dao.unlinkall(playlistId)
-            orderedTrackIds.forEachIndexed { idx, trackId ->
-                dao.linktrack(
-                    PlaylistTrackEntity(
-                        playlistId = playlistId,
-                        trackId = trackId,
-                        position = idx,
-                        setVideoId = oldLinks[trackId]?.setVideoId,
-                    ),
-                )
+            reorderMutex.withLock {
+                dao.reorderlinks(playlistId, orderedTrackIds)
             }
         }
     }

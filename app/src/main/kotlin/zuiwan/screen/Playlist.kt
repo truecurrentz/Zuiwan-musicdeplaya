@@ -4,7 +4,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -32,6 +34,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -41,6 +44,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,10 +55,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import zuiwan.model.PlaylistDetail
 import zuiwan.model.PlaylistSummary
@@ -117,13 +124,134 @@ fun viewplaylist(
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
 
-    var draggingIdx by remember { mutableIntStateOf(-1) }
+    var draggingKey by remember { mutableStateOf<String?>(null) }
     var dragOffsetPx by remember { mutableFloatStateOf(0f) }
-    val rowHeightPx = with(density) { 68.dp.toPx() }
+    var pendingSwapLazyIdx by remember { mutableIntStateOf(-1) }
+    var dragDirty by remember { mutableStateOf(false) }
+    val latestDbId by rememberUpdatedState(dbPlaylistId)
 
     val headerScroll = headerscroll()
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
+
+    fun stepdrag() {
+        val activeKey = draggingKey ?: return
+        val curDetail = remoteOrLocalDetail ?: return
+        val keyed = keytracks(curDetail.tracks)
+        val fromIdx = keyed.indexOfFirst { it.second == activeKey }
+        if (fromIdx !in curDetail.tracks.indices) return
+
+        val visibleItems = listState.layoutInfo.visibleItemsInfo
+        val draggedItem = visibleItems.firstOrNull { it.key == activeKey } ?: return
+        if (pendingSwapLazyIdx >= 0) {
+            if (draggedItem.index == pendingSwapLazyIdx) return
+            pendingSwapLazyIdx = -1
+        }
+
+        val draggedCenterY = draggedItem.offset + dragOffsetPx + draggedItem.size * 0.5f
+        val keyToIdx = HashMap<Any, Int>(keyed.size)
+        keyed.forEach { (idx, key, _) -> keyToIdx[key] = idx }
+
+        val targetItem = if (dragOffsetPx > 0f) {
+            visibleItems.lastOrNull { cand ->
+                val candIdx = keyToIdx[cand.key] ?: return@lastOrNull false
+                candIdx > fromIdx &&
+                    cand.index > draggedItem.index &&
+                    draggedCenterY > cand.offset + cand.size * 0.5f
+            }
+        } else if (dragOffsetPx < 0f) {
+            visibleItems.firstOrNull { cand ->
+                val candIdx = keyToIdx[cand.key] ?: return@firstOrNull false
+                candIdx < fromIdx &&
+                    cand.index < draggedItem.index &&
+                    draggedCenterY < cand.offset + cand.size * 0.5f
+            }
+        } else {
+            null
+        } ?: return
+
+        val toIdx = keyToIdx[targetItem.key] ?: return
+        if (toIdx == fromIdx || toIdx !in curDetail.tracks.indices) return
+
+        val anchorIndex = listState.firstVisibleItemIndex
+        val anchorOffset = listState.firstVisibleItemScrollOffset
+        val anchorTouched = draggedItem.index == anchorIndex || targetItem.index == anchorIndex
+
+        val newLayoutOffset = if (toIdx > fromIdx) {
+            targetItem.offset + targetItem.size - draggedItem.size
+        } else {
+            targetItem.offset
+        }
+        pendingSwapLazyIdx = draggedItem.index
+        dragOffsetPx = draggedItem.offset + dragOffsetPx - newLayoutOffset
+
+        val mutable = curDetail.tracks.toMutableList()
+        val moved = mutable.removeAt(fromIdx)
+        mutable.add(toIdx, moved)
+        remoteOrLocalDetail = curDetail.copy(tracks = mutable)
+        dragDirty = true
+
+        if (anchorTouched) {
+            scope.launch {
+                listState.scrollToItem(anchorIndex, anchorOffset)
+            }
+        }
+    }
+
+    fun commitdrag() {
+        val wasDirty = dragDirty
+        draggingKey = null
+        dragOffsetPx = 0f
+        pendingSwapLazyIdx = -1
+        dragDirty = false
+        if (wasDirty) {
+            val ids = remoteOrLocalDetail?.tracks?.map { it.id }.orEmpty()
+            if (ids.isNotEmpty()) {
+                hub.reorderplaylist(latestDbId, ids)
+            }
+        }
+    }
+
+    DisposableEffect(playlistId) {
+        onDispose {
+            commitdrag()
+        }
+    }
+
+    LaunchedEffect(draggingKey) {
+        val activeKey = draggingKey ?: return@LaunchedEffect
+        val edgePx = with(density) { 88.dp.toPx() }
+        val maxStepPx = with(density) { 14.dp.toPx() }
+        while (draggingKey == activeKey) {
+            val layout = listState.layoutInfo
+            val draggedItem = layout.visibleItemsInfo.firstOrNull { it.key == activeKey }
+            if (draggedItem != null) {
+                val visualTop = draggedItem.offset + dragOffsetPx
+                val visualBottom = visualTop + draggedItem.size
+                val topZone = layout.viewportStartOffset + edgePx
+                val bottomZone = layout.viewportEndOffset - edgePx
+                val scrollDelta = when {
+                    visualTop < topZone && listState.canScrollBackward -> {
+                        val frac = ((topZone - visualTop) / edgePx).coerceIn(0.1f, 1f)
+                        -maxStepPx * frac
+                    }
+                    visualBottom > bottomZone && listState.canScrollForward -> {
+                        val frac = ((visualBottom - bottomZone) / edgePx).coerceIn(0.1f, 1f)
+                        maxStepPx * frac
+                    }
+                    else -> 0f
+                }
+                if (scrollDelta != 0f) {
+                    val consumed = listState.scrollBy(scrollDelta)
+                    if (consumed != 0f) {
+                        dragOffsetPx += consumed
+                        stepdrag()
+                    }
+                }
+            }
+            delay(16L)
+        }
+    }
 
     LaunchedEffect(searchOpen) {
         if (searchOpen) focusRequester.requestFocus()
@@ -152,9 +280,9 @@ fun viewplaylist(
         }
     }
 
-    suspend fun reload() {
+    suspend fun reload(showSpinner: Boolean = remoteOrLocalDetail == null) {
         if (isAuto) return
-        loading = true
+        if (showSpinner) loading = true
         if (isStored) {
             var localRes = hub.localplaylist(dbPlaylistId)
             val remoteRef = storedPl?.remoteId ?: playlistId.takeIf { it.startsWith("yt_") }?.removePrefix("yt_")
@@ -162,15 +290,22 @@ fun viewplaylist(
                 runCatching { hub.sync.syncone(dbPlaylistId) }
                 localRes = hub.localplaylist(dbPlaylistId) ?: hub.tube.loadplaylist(remoteRef).getOrNull()
             }
-            remoteOrLocalDetail = localRes
+            if (localRes != null || remoteOrLocalDetail == null) {
+                remoteOrLocalDetail = localRes
+            }
         } else {
-            remoteOrLocalDetail = hub.tube.loadplaylist(playlistId).getOrNull()
+            val remote = hub.tube.loadplaylist(playlistId).getOrNull()
+            if (remote != null || remoteOrLocalDetail == null) {
+                remoteOrLocalDetail = remote
+            }
         }
         loading = false
     }
 
-    LaunchedEffect(playlistId, local, savedPlaylists.size) {
-        reload()
+    LaunchedEffect(playlistId, local, storedPl?.id, storedPl?.songCount) {
+        if (draggingKey == null && !dragDirty) {
+            reload(showSpinner = remoteOrLocalDetail == null)
+        }
     }
 
     val detail: PlaylistDetail? = when (playlistId) {
@@ -468,10 +603,11 @@ fun viewplaylist(
                 ).joinToString(" - ")
 
                 val cleanQ = query.trim().lowercase()
+                val keyedAll = keytracks(info.tracks)
                 val visibleTracks = if (cleanQ.isBlank()) {
-                    info.tracks.mapIndexed { i, t -> i to t }
+                    keyedAll
                 } else {
-                    info.tracks.mapIndexed { i, t -> i to t }.filter { (_, s) ->
+                    keyedAll.filter { (_, _, s) ->
                         s.title.lowercase().contains(cleanQ) ||
                             s.artistline().lowercase().contains(cleanQ)
                     }
@@ -631,14 +767,21 @@ fun viewplaylist(
 
                 itemsIndexed(
                     items = visibleTracks,
-                    key = { _, pair -> "${pair.second.id}_${pair.first}" },
-                ) { viewIdx, (origIdx, song) ->
-                    val isDragging = draggingIdx == origIdx && cleanQ.isBlank()
+                    key = { _, entry -> entry.second },
+                ) { _, (origIdx, stableKey, song) ->
+                    val isDragging = draggingKey == stableKey && cleanQ.isBlank()
+                    val coordRef = remember(stableKey) { arrayOfNulls<LayoutCoordinates>(1) }
+                    val latestOrigIdx by rememberUpdatedState(origIdx)
+                    val latestAllTracks by rememberUpdatedState(info.tracks)
+
                     songrow(
                         track = song,
                         playing = playback.current?.id == song.id,
+                        cardBackground = isDragging,
                         onClick = {
-                            hub.pilot.playtracks(info.tracks, origIdx, info.playlist.title, fetchRadio = false)
+                            if (draggingKey == null) {
+                                hub.pilot.playtracks(latestAllTracks, latestOrigIdx, info.playlist.title, fetchRadio = false)
+                            }
                         },
                         onMore = { onTrackMenu(song) },
                         trailing = if (isLocalEditable && cleanQ.isBlank()) {
@@ -650,8 +793,20 @@ fun viewplaylist(
                                             .size(34.dp)
                                             .clip(CircleShape)
                                             .clickable {
+                                                if (draggingKey != null) commitdrag()
+                                                remoteOrLocalDetail = remoteOrLocalDetail?.let { cur ->
+                                                    val next = cur.tracks.toMutableList()
+                                                    if (latestOrigIdx in next.indices && next[latestOrigIdx].id == song.id) {
+                                                        next.removeAt(latestOrigIdx)
+                                                    } else {
+                                                        next.removeAll { it.id == song.id }
+                                                    }
+                                                    cur.copy(
+                                                        playlist = cur.playlist.copy(songCount = next.size),
+                                                        tracks = next,
+                                                    )
+                                                }
                                                 hub.droptrack(dbPlaylistId, song.id)
-                                                scope.launch { reload() }
                                             },
                                     ) {
                                         Icon(
@@ -664,46 +819,50 @@ fun viewplaylist(
                                     Box(
                                         contentAlignment = Alignment.Center,
                                         modifier = Modifier
-                                            .size(34.dp)
-                                            .pointerInput(origIdx, info.tracks.size) {
-                                                detectDragGesturesAfterLongPress(
-                                                    onDragStart = {
-                                                        draggingIdx = origIdx
-                                                        dragOffsetPx = 0f
-                                                    },
-                                                    onDragCancel = {
-                                                        draggingIdx = -1
-                                                        dragOffsetPx = 0f
-                                                    },
-                                                    onDragEnd = {
-                                                        draggingIdx = -1
-                                                        dragOffsetPx = 0f
-                                                    },
-                                                    onDrag = { change, dragAmount ->
-                                                        change.consume()
-                                                        dragOffsetPx += dragAmount.y
-                                                        val steps = (dragOffsetPx / rowHeightPx).toInt()
-                                                        if (steps != 0 && draggingIdx in info.tracks.indices) {
-                                                            val target = (draggingIdx + steps).coerceIn(0, info.tracks.lastIndex)
-                                                            if (target != draggingIdx) {
-                                                                val ids = info.tracks.map { it.id }.toMutableList()
-                                                                val moved = ids.removeAt(draggingIdx)
-                                                                ids.add(target, moved)
-                                                                draggingIdx = target
-                                                                dragOffsetPx -= steps * rowHeightPx
-                                                                hub.reorderplaylist(dbPlaylistId, ids)
-                                                                scope.launch { reload() }
+                                            .size(40.dp)
+                                            .onGloballyPositioned { coordRef[0] = it }
+                                            .pointerInput(stableKey) {
+                                                awaitEachGesture {
+                                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                                    down.consume()
+                                                    var lastRootY = coordRef[0]?.localToRoot(down.position)?.y ?: 0f
+                                                    draggingKey = stableKey
+                                                    dragOffsetPx = 0f
+                                                    pendingSwapLazyIdx = -1
+                                                    dragDirty = false
+                                                    var pointerId = down.id
+                                                    try {
+                                                        while (true) {
+                                                            val event = awaitPointerEvent()
+                                                            val change = event.changes.firstOrNull { it.id == pointerId }
+                                                                ?: event.changes.firstOrNull { it.pressed }
+                                                                ?: break
+                                                            pointerId = change.id
+                                                            if (!change.pressed) {
+                                                                change.consume()
+                                                                break
+                                                            }
+                                                            change.consume()
+                                                            val coords = coordRef[0]
+                                                            if (coords != null && coords.isAttached) {
+                                                                val nowRootY = coords.localToRoot(change.position).y
+                                                                val deltaY = nowRootY - lastRootY
+                                                                lastRootY = nowRootY
+                                                                dragOffsetPx += deltaY
+                                                                stepdrag()
                                                             }
                                                         }
-                                                    },
-                                                )
+                                                    } finally {
+                                                        commitdrag()
+                                                    }
+                                                }
                                             },
                                     ) {
                                         Icon(
                                             imageVector = ZIcons.Drag,
                                             contentDescription = "Reorder",
-                                            tint = glassTokens.inkMuted,
-                                            modifier = Modifier.size(17.dp),
+                                            tint = if (isDragging) glassTokens.accent else glassTokens.inkMuted,
+                                            modifier = Modifier.size(18.dp),
                                         )
                                     }
                                     Box(
@@ -726,9 +885,13 @@ fun viewplaylist(
                             null
                         },
                         modifier = Modifier
-                            .zIndex(if (isDragging) 1f else 0f)
+                            .then(if (!isDragging) Modifier.animateItem() else Modifier)
+                            .zIndex(if (isDragging) 10f else 0f)
                             .graphicsLayer {
                                 translationY = if (isDragging) dragOffsetPx else 0f
+                                val s = if (isDragging) 1.02f else 1f
+                                scaleX = s
+                                scaleY = s
                             }
                             .padding(horizontal = 8.dp),
                     )
@@ -748,6 +911,15 @@ fun viewplaylist(
                 }
             }
         }
+    }
+}
+
+private fun keytracks(tracks: List<Track>): List<Triple<Int, String, Track>> {
+    val counts = HashMap<String, Int>(tracks.size)
+    return tracks.mapIndexed { idx, t ->
+        val occ = (counts[t.id] ?: 0) + 1
+        counts[t.id] = occ
+        Triple(idx, "${t.id}#$occ", t)
     }
 }
 

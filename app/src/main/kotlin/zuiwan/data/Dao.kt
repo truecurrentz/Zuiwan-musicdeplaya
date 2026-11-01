@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
@@ -144,6 +145,30 @@ interface MusicDao {
     @Query("UPDATE playlist_tracks SET setVideoId = :setVideoId WHERE playlistId = :playlistId AND trackId = :trackId")
     suspend fun updatesetvideo(playlistId: String, trackId: String, setVideoId: String?)
 
+    @Query("UPDATE playlist_tracks SET position = :position WHERE playlistId = :playlistId AND trackId = :trackId")
+    suspend fun updatepos(playlistId: String, trackId: String, position: Int)
+
+    @Transaction
+    suspend fun reorderlinks(playlistId: String, orderedTrackIds: List<String>) {
+        val current = playlistlinks(playlistId)
+        if (current.isEmpty()) return
+        val existingIds = current.mapTo(HashSet(current.size)) { it.trackId }
+        val placed = HashSet<String>(orderedTrackIds.size)
+        var pos = 0
+        for (trackId in orderedTrackIds) {
+            if (trackId in existingIds && placed.add(trackId)) {
+                updatepos(playlistId, trackId, pos)
+                pos += 1
+            }
+        }
+        for (link in current) {
+            if (placed.add(link.trackId)) {
+                updatepos(playlistId, link.trackId, pos)
+                pos += 1
+            }
+        }
+    }
+
     @Query("DELETE FROM playlist_tracks WHERE playlistId = :playlistId AND trackId = :trackId")
     suspend fun unlinktrack(playlistId: String, trackId: String)
 
@@ -192,6 +217,14 @@ interface MusicDao {
 
     @Query("DELETE FROM saved_queue")
     suspend fun clearqueue()
+
+    @Transaction
+    suspend fun replacequeue(rows: List<QueueEntity>) {
+        clearqueue()
+        if (rows.isNotEmpty()) {
+            savequeue(rows)
+        }
+    }
 
     @Query("SELECT * FROM recognized ORDER BY recognizedAt DESC LIMIT 100")
     fun recognizedlist(): Flow<List<RecognizedEntity>>

@@ -71,6 +71,7 @@ class AudioPilot(
 
     private var lyricsJob: Job? = null
     private var radioJob: Job? = null
+    private var persistJob: Job? = null
     private var activePlayStartMs: Long = 0L
     private var activeLoggedTrackId: String? = null
     @Volatile
@@ -614,15 +615,19 @@ class AudioPilot(
 
     private fun persistqueue() {
         val snap = stateFlow.value
-        scope.launch(Dispatchers.IO) {
+        persistJob?.cancel()
+        persistJob = scope.launch(Dispatchers.IO) {
+            delay(120L)
             val prefs = store.settings.first()
             if (!prefs.persistentQueue) return@launch
-            dao.clearqueue()
-            if (snap.queue.isEmpty()) return@launch
+            if (snap.queue.isEmpty()) {
+                dao.clearqueue()
+                return@launch
+            }
             snap.queue.forEach { t ->
                 if (dao.gettrack(t.id) == null) dao.puttrack(t.toentity())
             }
-            dao.savequeue(
+            dao.replacequeue(
                 snap.queue.mapIndexed { idx, t ->
                     QueueEntity(
                         slot = idx,
