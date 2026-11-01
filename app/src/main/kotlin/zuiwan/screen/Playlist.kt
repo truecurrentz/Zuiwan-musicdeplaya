@@ -152,7 +152,7 @@ fun viewplaylist(
         val keyToIdx = HashMap<Any, Int>(keyed.size)
         keyed.forEach { (idx, key, _) -> keyToIdx[key] = idx }
 
-        val targetItem = if (dragOffsetPx > 0f) {
+        val targetItem = (if (dragOffsetPx > 0f) {
             visibleItems.lastOrNull { cand ->
                 val candIdx = keyToIdx[cand.key] ?: return@lastOrNull false
                 candIdx > fromIdx &&
@@ -168,7 +168,7 @@ fun viewplaylist(
             }
         } else {
             null
-        } ?: return
+        }) ?: return
 
         val toIdx = keyToIdx[targetItem.key] ?: return
         if (toIdx == fromIdx || toIdx !in curDetail.tracks.indices) return

@@ -113,7 +113,7 @@ fun queueview(
         val keyToLocal = HashMap<Any, Int>(currentList.size)
         currentList.forEachIndexed { localIdx, entry -> keyToLocal[entry.second] = localIdx }
 
-        val targetItem = if (dragOffsetPx > 0f) {
+        val targetItem = (if (dragOffsetPx > 0f) {
             visibleItems.lastOrNull { cand ->
                 val candLocal = keyToLocal[cand.key] ?: return@lastOrNull false
                 candLocal > fromLocal &&
@@ -129,7 +129,7 @@ fun queueview(
             }
         } else {
             null
-        } ?: return
+        }) ?: return
 
         val toLocal = keyToLocal[targetItem.key] ?: return
         if (toLocal == fromLocal || toLocal !in currentList.indices) return
