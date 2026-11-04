@@ -69,7 +69,7 @@ fun editorsheet(
     }
     var trimEnd by remember(track.id) {
         val initEnd = if (track.trimEndMs > track.trimStartMs) track.trimEndMs.toFloat() else fullMs
-        mutableFloatStateOf(initEnd.coerceIn(0f, fullMs))
+        mutableFloatStateOf(initEnd.coerceIn(trimStart.coerceAtLeast(0f), fullMs))
     }
 
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -174,8 +174,10 @@ fun editorsheet(
             RangeSlider(
                 value = trimStart..trimEnd,
                 onValueChange = { range ->
-                    trimStart = range.start
-                    trimEnd = range.endInclusive.coerceAtLeast(range.start + 1_000f)
+                    val nextStart = range.start.coerceIn(0f, fullMs - 1_000f)
+                    val nextEnd = range.endInclusive.coerceIn(nextStart + 1_000f, fullMs)
+                    trimStart = nextStart
+                    trimEnd = nextEnd
                 },
                 valueRange = 0f..fullMs,
                 colors = SliderDefaults.colors(

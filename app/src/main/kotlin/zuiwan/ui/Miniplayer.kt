@@ -4,7 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import zuiwan.audio.PlaybackState
@@ -40,6 +41,7 @@ import zuiwan.model.artistline
 import zuiwan.model.fallbackart
 import zuiwan.model.trackart
 import zuiwan.theme.LocalGlass
+import kotlin.math.abs
 
 @Composable
 fun miniplayer(
@@ -51,6 +53,7 @@ fun miniplayer(
     onPrev: () -> Unit,
     onLike: () -> Unit,
     connectedBelow: Boolean = true,
+    swipeSkip: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val track = state.current ?: return
@@ -60,7 +63,10 @@ fun miniplayer(
     } else {
         0f
     }
+    val density = LocalDensity.current
+    val swipeThreshold = remember(density) { with(density) { 88.dp.toPx() } }
     var dragX by remember { mutableFloatStateOf(0f) }
+    var dragY by remember { mutableFloatStateOf(0f) }
 
     val barShape = if (connectedBelow) {
         RoundedCornerShape(
@@ -78,16 +84,29 @@ fun miniplayer(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp)
-            .pointerInput(track.id) {
-                detectHorizontalDragGestures(
-                    onDragStart = { dragX = 0f },
-                    onHorizontalDrag = { change, amount ->
-                        change.consume()
-                        dragX += amount
+            .pointerInput(track.id, swipeSkip) {
+                if (!swipeSkip) return@pointerInput
+                detectDragGestures(
+                    onDragStart = {
+                        dragX = 0f
+                        dragY = 0f
+                    },
+                    onDragCancel = {
+                        dragX = 0f
+                        dragY = 0f
                     },
                     onDragEnd = {
-                        if (dragX < -90f) onNext() else if (dragX > 90f) onPrev()
+                        val decisive = abs(dragX) >= swipeThreshold && abs(dragX) > abs(dragY) * 1.8f
+                        if (decisive) {
+                            if (dragX < 0f) onNext() else onPrev()
+                        }
                         dragX = 0f
+                        dragY = 0f
+                    },
+                    onDrag = { change, amount ->
+                        dragX += amount.x
+                        dragY += amount.y
+                        change.consume()
                     },
                 )
             },

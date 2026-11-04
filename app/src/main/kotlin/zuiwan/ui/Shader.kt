@@ -5,6 +5,7 @@ import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.graphics.drawable.AnimatedImageDrawable
+import android.graphics.drawable.Drawable
 import android.media.MediaPlayer
 import android.os.Build
 import android.view.Surface
@@ -12,7 +13,6 @@ import android.view.TextureView
 import android.view.ViewGroup
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.widget.ImageView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -21,7 +21,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -34,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -41,6 +44,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import zuiwan.model.ShaderPreset
 import zuiwan.model.SpectrumFrame
 import zuiwan.model.VisualMode
@@ -49,6 +54,7 @@ import java.io.File
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -70,7 +76,10 @@ fun mediabackdrop(
     }
     if (motionFile == null && wallFile == null) return
 
-    val blurMod = if (blurRadius > 1f) Modifier.blur(blurRadius.dp) else Modifier
+    val animated = motionFile != null &&
+        (motionIsVideo || motionFile.extension.equals("gif", ignoreCase = true))
+    val activeBlur = if (animated) min(blurRadius, 18f) else blurRadius
+    val blurMod = if (activeBlur > 1f) Modifier.blur(activeBlur.dp) else Modifier
 
     Box(modifier = modifier.fillMaxSize()) {
         when {
@@ -125,40 +134,61 @@ private fun giflayer(
     file: File,
     modifier: Modifier = Modifier,
 ) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        AndroidView(
-            modifier = modifier,
-            factory = { ctx ->
-                ImageView(ctx).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    )
-                }
-            },
-            update = { view ->
-                if (view.tag != file.absolutePath) {
-                    view.tag = file.absolutePath
-                    runCatching {
-                        val src = ImageDecoder.createSource(file)
-                        val drawable = ImageDecoder.decodeDrawable(src)
-                        view.setImageDrawable(drawable)
-                        if (drawable is AnimatedImageDrawable) {
-                            drawable.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
-                            drawable.start()
-                        }
-                    }
-                }
-            },
-        )
-    } else {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
         AsyncImage(
             model = file,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = modifier,
         )
+        return
+    }
+    val tick = remember(file) { mutableIntStateOf(0) }
+    val frame by produceState<Drawable?>(initialValue = null, file) {
+        val decoded = withContext(Dispatchers.IO) {
+            runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(file)) }.getOrNull()
+        }
+        val animated = decoded as? AnimatedImageDrawable
+        if (animated != null) {
+            animated.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
+            animated.callback = object : Drawable.Callback {
+                override fun invalidateDrawable(who: Drawable) {
+                    tick.intValue++
+                }
+
+                override fun scheduleDrawable(who: Drawable, what: Runnable, whenTime: Long) = Unit
+
+                override fun unscheduleDrawable(who: Drawable, what: Runnable) = Unit
+            }
+        }
+        value = decoded
+    }
+    DisposableEffect(frame) {
+        val animated = frame as? AnimatedImageDrawable
+        runCatching { animated?.start() }
+        onDispose {
+            runCatching { animated?.stop() }
+        }
+    }
+    Canvas(modifier = modifier) {
+        val drawable = frame ?: return@Canvas
+        tick.intValue
+        val width = size.width.toInt()
+        val height = size.height.toInt()
+        if (width <= 0 || height <= 0) return@Canvas
+        val intrinsicW = drawable.intrinsicWidth
+        val intrinsicH = drawable.intrinsicHeight
+        if (intrinsicW <= 0 || intrinsicH <= 0) {
+            drawable.setBounds(0, 0, width, height)
+        } else {
+            val scale = max(width.toFloat() / intrinsicW.toFloat(), height.toFloat() / intrinsicH.toFloat())
+            val scaledW = (intrinsicW * scale).toInt().coerceAtLeast(1)
+            val scaledH = (intrinsicH * scale).toInt().coerceAtLeast(1)
+            val left = (width - scaledW) / 2
+            val top = (height - scaledH) / 2
+            drawable.setBounds(left, top, left + scaledW, top + scaledH)
+        }
+        runCatching { drawable.draw(drawContext.canvas.nativeCanvas) }
     }
 }
 

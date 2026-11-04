@@ -261,6 +261,9 @@ class Hub(val appContext: Context) {
     private val homeLoadingFlow = MutableStateFlow(true)
     val homeLoading: StateFlow<Boolean> = homeLoadingFlow.asStateFlow()
 
+    @Volatile
+    private var moreLoading = false
+
     private val homeErrorFlow = MutableStateFlow<String?>(null)
     val homeError: StateFlow<String?> = homeErrorFlow.asStateFlow()
 
@@ -334,14 +337,27 @@ class Hub(val appContext: Context) {
 
     fun morehome() {
         val cont = homeFeedFlow.value.continuation ?: return
-        if (homeLoadingFlow.value) return
+        if (homeLoadingFlow.value || moreLoading) return
+        moreLoading = true
         scope.launch {
-            tube.loadhome(continuation = cont).onSuccess { more ->
-                val cur = homeFeedFlow.value
-                homeFeedFlow.value = cur.copy(
-                    shelves = cur.shelves + more.shelves,
-                    continuation = more.continuation,
-                )
+            try {
+                tube.loadhome(continuation = cont)
+                    .onSuccess { more ->
+                        val cur = homeFeedFlow.value
+                        val known = cur.shelves.map { it.title to it.browseId }.toSet()
+                        val fresh = more.shelves.filter { (it.title to it.browseId) !in known }
+                        homeFeedFlow.value = cur.copy(
+                            shelves = cur.shelves + fresh,
+                            continuation = more.continuation,
+                        )
+                    }
+                    .onFailure {
+                        homeFeedFlow.value = homeFeedFlow.value.copy(continuation = null)
+                    }
+            } catch (_: Exception) {
+                homeFeedFlow.value = homeFeedFlow.value.copy(continuation = null)
+            } finally {
+                moreLoading = false
             }
         }
     }
@@ -837,7 +853,7 @@ class Hub(val appContext: Context) {
                 trimStartMs = trimStartMs,
                 trimEndMs = trimEndMs,
             ).onSuccess { updated ->
-                pilot.updatetrack(updated)
+                runCatching { pilot.updatetrack(updated) }
                 shownotice(NoticeKind.SUCCESS, "Audio Updated", updated.title)
             }.onFailure { err ->
                 shownotice(NoticeKind.ERROR, "Edit Failed", err.message ?: "Unable to save audio changes")

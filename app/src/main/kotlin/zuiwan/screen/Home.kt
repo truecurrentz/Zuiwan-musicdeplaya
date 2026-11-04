@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
@@ -61,7 +62,8 @@ fun viewhome(
     val selectedChip by hub.selectedChip.collectAsState()
     val history by hub.historyTracks.collectAsState()
     val savedArtists by hub.savedArtists.collectAsState()
-    val playback by hub.pilot.state.collectAsState()
+    val pilotState = hub.pilot.state.collectAsState()
+    val nowPlayingId by remember { derivedStateOf { pilotState.value.current?.id } }
 
     val headerScroll = headerscroll()
     val listState = rememberLazyListState()
@@ -170,12 +172,12 @@ fun viewhome(
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        items(cols) { group ->
+                        itemsIndexed(cols, key = { idx, _ -> "quick_$idx" }) { _, group ->
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 group.forEach { song ->
                                     picktile(
                                         track = song,
-                                        playing = playback.current?.id == song.id,
+                                        playing = nowPlayingId == song.id,
                                         onClick = { hub.pilot.audioplay(song, "Quick picks") },
                                         onMore = { onTrackMenu(song) },
                                     )
@@ -246,9 +248,14 @@ fun viewhome(
                 }
             }
 
-            feed.shelves.forEachIndexed { shelfIdx, shelf ->
+            val shelfSeen = mutableMapOf<String, Int>()
+            feed.shelves.forEach { shelf ->
                 val allSongs = shelf.items.all { it is FeedItem.SongCard }
-                item(key = "shelf_head_$shelfIdx") {
+                val shelfBase = "${shelf.title}#${shelf.browseId.orEmpty()}"
+                val shelfOcc = shelfSeen[shelfBase] ?: 0
+                shelfSeen[shelfBase] = shelfOcc + 1
+                val shelfKey = "$shelfBase#$shelfOcc"
+                item(key = "shelf_head_$shelfKey") {
                     Spacer(Modifier.height(12.dp))
                     sectionbar(
                         title = shelf.title,
@@ -269,7 +276,7 @@ fun viewhome(
                     )
                 }
 
-                item(key = "shelf_body_$shelfIdx") {
+                item(key = "shelf_body_$shelfKey") {
                     if (allSongs) {
                         val songs = shelf.items.mapNotNull { (it as? FeedItem.SongCard)?.track }
                         val columns = songs.chunked(4)
@@ -277,12 +284,12 @@ fun viewhome(
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            items(columns) { group ->
+                            itemsIndexed(columns, key = { idx, _ -> "$shelfKey#$idx" }) { _, group ->
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     group.forEach { song ->
                                         picktile(
                                             track = song,
-                                            playing = playback.current?.id == song.id,
+                                            playing = nowPlayingId == song.id,
                                             onClick = { hub.pilot.audioplay(song, shelf.title) },
                                             onMore = { onTrackMenu(song) },
                                         )

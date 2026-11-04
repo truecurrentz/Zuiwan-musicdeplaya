@@ -75,6 +75,7 @@ import dev.chrisbanes.haze.blur.hazeBlur
 import zuiwan.model.upscaleart
 import zuiwan.theme.LocalGlass
 import zuiwan.theme.LocalHaze
+import kotlin.math.abs
 
 @Stable
 class HeaderScroll {
@@ -87,6 +88,7 @@ class HeaderScroll {
 
     fun updateheight(px: Float) {
         if (px <= 0f) return
+        if (abs(px - heightPx) < 2f) return
         heightPx = px
         offsetPx = offsetPx.coerceIn(-px, 0f)
     }

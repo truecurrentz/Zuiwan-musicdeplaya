@@ -376,6 +376,7 @@ private fun rootview(
                                 onPrev = { hub.pilot.skipprev() },
                                 onLike = { hub.togglelike(currentTrack) },
                                 connectedBelow = true,
+                                swipeSkip = settings.swipeskip,
                             )
                             Spacer(Modifier.height(3.dp))
                         }

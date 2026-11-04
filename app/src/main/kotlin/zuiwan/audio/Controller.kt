@@ -485,21 +485,25 @@ class AudioPilot(
             current = cur.current?.let { if (it.id == updated.id) updated else it },
             queue = cur.queue.map { if (it.id == updated.id) updated else it },
         )
-        withplayer { p ->
-            for (idx in 0 until p.mediaItemCount) {
-                if (p.getMediaItemAt(idx).mediaId == updated.id) {
-                    val wasCurrent = idx == p.currentMediaItemIndex
-                    val pos = p.currentPosition
-                    val wasPlaying = p.isPlaying
-                    p.replaceMediaItem(idx, book.mediaitem(updated))
-                    if (wasCurrent) {
-                        val safePos = pos.coerceAtLeast(0L)
-                        p.seekTo(idx, safePos)
-                        if (wasPlaying) p.play()
+        scope.launch {
+            runCatching {
+                withplayer { p ->
+                    val count = p.mediaItemCount
+                    for (idx in 0 until count) {
+                        if (p.getMediaItemAt(idx).mediaId == updated.id) {
+                            val wasCurrent = idx == p.currentMediaItemIndex
+                            val pos = p.currentPosition.coerceAtLeast(0L)
+                            val wasPlaying = p.isPlaying
+                            p.replaceMediaItem(idx, book.mediaitem(updated))
+                            if (wasCurrent) {
+                                p.seekTo(idx, pos)
+                                if (wasPlaying) p.play()
+                            }
+                        }
                     }
+                    syncstate(p)
                 }
             }
-            syncstate(p)
         }
     }
 

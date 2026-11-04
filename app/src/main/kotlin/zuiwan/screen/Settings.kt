@@ -764,6 +764,16 @@ fun viewsettings(
                                     },
                                 )
                                 switchitem(
+                                    icon = ZIcons.FastForward,
+                                    title = "Swipe to Skip",
+                                    subtitle = "Swipe the miniplayer sideways to change songs. Off stops accidental skips",
+                                    checked = settings.swipeskip,
+                                    position = GroupPos.MIDDLE,
+                                    onToggle = { v ->
+                                        scope.launch { hub.store.updatesettings { it.copy(swipeskip = v) } }
+                                    },
+                                )
+                                switchitem(
                                     icon = ZIcons.Queue,
                                     title = "Persistent Queue",
                                     subtitle = "Remember queue and playback position across restarts",

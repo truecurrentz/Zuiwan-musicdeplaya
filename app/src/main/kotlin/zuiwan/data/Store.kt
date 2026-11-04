@@ -31,6 +31,7 @@ data class AppSettings(
     val quality: QualityMode = QualityMode.HIGH,
     val normalizeAudio: Boolean = true,
     val skipSilence: Boolean = false,
+    val swipeskip: Boolean = false,
     val crossfadeSec: Int = 0,
     val speed: Float = 1.0f,
     val pitch: Float = 1.0f,
