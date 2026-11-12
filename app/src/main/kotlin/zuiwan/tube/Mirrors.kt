@@ -227,7 +227,7 @@ class MirrorResolver {
                 }
             }
 
-            if (bestObj == null || bestScore < 42) return@racehosts null
+            if (bestObj == null || bestScore < 52) return@racehosts null
             val dlList = bestObj["downloadUrl"]?.aslist().orEmpty()
             if (dlList.isEmpty()) return@racehosts null
 
@@ -318,7 +318,7 @@ class MirrorResolver {
                 }
             }
 
-            if (bestId == null || bestScore < 44) return@racehosts null
+            if (bestId == null || bestScore < 52) return@racehosts null
             val trackRaw = httpget("$host/track/?id=$bestId&quality=$tier") ?: return@racehosts null
             val trackNode = parseobj(trackRaw) ?: return@racehosts null
             val inner = trackNode["data"]?.asobj() ?: trackNode
@@ -391,7 +391,7 @@ class MirrorResolver {
                 }
             }
 
-            if (bestId == null || bestScore < 46) return@racehosts null
+            if (bestId == null || bestScore < 52) return@racehosts null
             val streamUrl = "$host/v1/tracks/$bestId/stream?app_name=Zuiwan"
             val now = System.currentTimeMillis()
             ResolvedAudio(
@@ -515,6 +515,10 @@ class MirrorResolver {
         val wt = cleanmeta(wantTitle).lowercase()
         val ct = cleanmeta(candTitleRaw).lowercase()
         if (wt.isBlank() || ct.isBlank()) return -100
+        val wanted = "$wantTitle $wantArtist"
+        if (VARIANT.containsMatchIn("$candTitleRaw $candArtistRaw") && !VARIANT.containsMatchIn(wanted)) {
+            return -100
+        }
 
         var score = 0
         if (wt == ct) {
@@ -541,7 +545,7 @@ class MirrorResolver {
                 if (waWords.intersect(caWords).isNotEmpty()) {
                     score += 18
                 } else {
-                    score -= 12
+                    score -= 35
                 }
             }
         }
@@ -554,6 +558,14 @@ class MirrorResolver {
                 diff <= 15 -> 5
                 else -> -10
             }
+        }
+        if (
+            wt == ct &&
+            wa.isNotBlank() &&
+            ca.isNotBlank() &&
+            (ca.contains(wa) || wa.contains(ca))
+        ) {
+            score += 8
         }
         return score
     }
@@ -594,6 +606,9 @@ class MirrorResolver {
         val BRACKET_NOISE =
             Regex("\\[(?i:official|lyric|lyrics|audio|video|visualizer|hd|hq|4k|mv|music video)[^]]*\\]")
         val NON_WORD = Regex("[^\\p{L}\\p{N}\\s]")
+        val VARIANT = Regex(
+            "(?i)\\b(instrumental|karaoke|backing track|made famous|in the style of|tribute|acapella|a cappella|nightcore|sped up|speed up|slowed|reverb|ringtone|mashup|medley|orchestral|lullaby)\\b",
+        )
         val MULTI_SPACE = Regex("\\s+")
 
         val PIPED_HOSTS = listOf(
@@ -602,6 +617,9 @@ class MirrorResolver {
             "https://pipedapi.leptons.xyz",
             "https://pipedapi.nosebs.ru",
             "https://pipedapi.adminforge.de",
+            "https://pipedapi.drgns.space",
+            "https://pipedapi.ducks.party",
+            "https://pipedapi.reallyaweso.me",
         )
 
         val INVIDIOUS_HOSTS = listOf(
@@ -609,6 +627,8 @@ class MirrorResolver {
             "https://invidious.nerdvpn.de",
             "https://invidious.privacyredirect.com",
             "https://yewtu.be",
+            "https://invidious.f5.si",
+            "https://inv.tux.pizza",
         )
 
         val SAAVN_HOSTS = listOf(
@@ -627,6 +647,7 @@ class MirrorResolver {
         val AUDIUS_HOSTS = listOf(
             "https://discoveryprovider.audius.co",
             "https://discoveryprovider2.audius.co",
+            "https://discoveryprovider3.audius.co",
         )
     }
 }

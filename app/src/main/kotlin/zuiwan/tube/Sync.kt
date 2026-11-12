@@ -308,21 +308,51 @@ class CloudSync(
             ),
         )
 
-        dao.unlinkall(entity.id)
         val now = System.currentTimeMillis()
-        finalDetail.tracks.forEachIndexed { idx, track ->
-            mergetrack(track, forceLiked = false, fallbackLikedAt = null)
-            dao.linktrack(
-                PlaylistTrackEntity(
-                    playlistId = entity.id,
-                    trackId = track.id,
-                    position = idx,
-                    addedAt = now + idx,
-                    setVideoId = track.setVideoId,
-                ),
-            )
+        val previousOrder = currentLinks.sortedBy { it.position }.map { it.trackId }
+        val remoteTracks = finalDetail.tracks.distinctBy { it.id }
+        val remoteById = remoteTracks.associateBy { it.id }
+        val ordered = if (isEditable) {
+            buildList {
+                previousOrder.forEach { id -> remoteById[id]?.let { add(it) } }
+                remoteTracks.forEach { track ->
+                    if (track.id !in previousOrder) add(track)
+                }
+            }
+        } else {
+            remoteTracks
         }
-        return finalDetail.tracks.size
+        val existingById = currentLinks.associateBy { it.trackId }
+        currentLinks.filter { it.trackId !in remoteById.keys }.forEach { stale ->
+            dao.unlinktrack(entity.id, stale.trackId)
+        }
+        var appendPos = (currentLinks.maxOfOrNull { it.position } ?: -1) + 1
+        ordered.forEach { track ->
+            mergetrack(track, forceLiked = false, fallbackLikedAt = null)
+            val link = existingById[track.id]
+            when {
+                link == null -> {
+                    dao.linktrack(
+                        PlaylistTrackEntity(
+                            playlistId = entity.id,
+                            trackId = track.id,
+                            position = appendPos,
+                            addedAt = now + appendPos,
+                            setVideoId = track.setVideoId,
+                        ),
+                    )
+                    appendPos += 1
+                }
+
+                link.setVideoId != track.setVideoId -> {
+                    dao.updatesetvideo(entity.id, track.id, track.setVideoId)
+                }
+            }
+        }
+        if (ordered.isNotEmpty()) {
+            dao.reorderlinks(entity.id, ordered.map { it.id })
+        }
+        return ordered.size
     }
 
     private suspend fun mergetrack(

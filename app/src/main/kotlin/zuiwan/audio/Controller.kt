@@ -72,6 +72,9 @@ class AudioPilot(
     private var lyricsJob: Job? = null
     private var radioJob: Job? = null
     private var persistJob: Job? = null
+    private var prefetchJob: Job? = null
+    private var prefetchId: String? = null
+    private var prefetchAtMs: Long = 0L
     private var activePlayStartMs: Long = 0L
     private var activeLoggedTrackId: String? = null
     @Volatile
@@ -194,6 +197,7 @@ class AudioPilot(
                     val pos = p.currentPosition.coerceAtLeast(0L)
                     val dur = p.duration.takeIf { it > 0L } ?: ((stateFlow.value.current?.duration ?: 0) * 1_000L)
                     crossfade(p, pos, dur)
+                    if (dur > 25_000L && pos > dur - 30_000L) prefetchnext(p)
                     stateFlow.value = stateFlow.value.copy(
                         playing = p.isPlaying,
                         buffering = p.playbackState == Player.STATE_BUFFERING,
@@ -203,6 +207,23 @@ class AudioPilot(
                 }
                 delay(200L)
             }
+        }
+    }
+
+    private fun prefetchnext(player: Player) {
+        val nextIdx = player.currentMediaItemIndex + 1
+        if (nextIdx !in 0 until player.mediaItemCount) return
+        val nextId = player.getMediaItemAt(nextIdx).mediaId
+        if (nextId.isBlank() || nextId.startsWith("local_")) return
+        val now = System.currentTimeMillis()
+        if (prefetchId == nextId && now - prefetchAtMs < 180_000L) return
+        if (prefetchJob?.isActive == true) return
+        val track = book.lookup(nextId) ?: return
+        prefetchId = nextId
+        prefetchAtMs = now
+        val quality = latestSettings.quality
+        prefetchJob = scope.launch(Dispatchers.IO) {
+            vault.prefetch(track, quality)
         }
     }
 

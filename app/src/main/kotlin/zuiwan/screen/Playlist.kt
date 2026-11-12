@@ -125,6 +125,7 @@ fun viewplaylist(
     var query by rememberSaveable { mutableStateOf("") }
 
     var draggingKey by remember { mutableStateOf<String?>(null) }
+    var lastdragAt by remember { mutableStateOf(0L) }
     var dragOffsetPx by remember { mutableFloatStateOf(0f) }
     var pendingSwapLazyIdx by remember { mutableIntStateOf(-1) }
     var dragDirty by remember { mutableStateOf(false) }
@@ -205,6 +206,7 @@ fun viewplaylist(
         pendingSwapLazyIdx = -1
         dragDirty = false
         if (wasDirty) {
+            lastdragAt = System.currentTimeMillis()
             val ids = remoteOrLocalDetail?.tracks?.map { it.id }.orEmpty()
             if (ids.isNotEmpty()) {
                 hub.reorderplaylist(latestDbId, ids)
@@ -282,6 +284,10 @@ fun viewplaylist(
 
     suspend fun reload(showSpinner: Boolean = remoteOrLocalDetail == null) {
         if (isAuto) return
+        if (System.currentTimeMillis() - lastdragAt < 1_500L) {
+            loading = false
+            return
+        }
         if (showSpinner) loading = true
         if (isStored) {
             var localRes = hub.localplaylist(dbPlaylistId)

@@ -172,6 +172,28 @@ class AudioVault(
         return DefaultDataSource.Factory(appContext, metaWrapped)
     }
 
+    fun prefetch(track: Track, quality: QualityMode) {
+        if (track.id.isBlank() || track.id.startsWith("local_")) return
+        scope.launch {
+            runCatching {
+                val (preferred, allowFallback) = providerMode()
+                streamEngine.extractstream(
+                    videoId = track.id,
+                    quality = quality,
+                    explicit = track.explicit,
+                    preferred = preferred,
+                    allowFallback = allowFallback,
+                    hint = TrackHint(
+                        title = track.title,
+                        artist = track.artistline(),
+                        durationSec = track.duration,
+                        explicit = track.explicit,
+                    ),
+                )
+            }
+        }
+    }
+
     fun downloadtrack(track: Track) {
         if (jobs.containsKey(track.id)) return
         val job = scope.launch {
@@ -275,13 +297,21 @@ private fun DataSpec.withresolved(stream: ResolvedAudio): DataSpec {
     if ((!stream.requireBoundedRange && !stream.useRangeChunks) || stream.rangeChunkBytes <= 0L) {
         return resolved
     }
+    val known = stream.spec.lengthBytes > 0L
+    val remaining = if (known) (stream.spec.lengthBytes - position).coerceAtLeast(0L) else Long.MAX_VALUE
+    if (remaining <= 0L) {
+        return resolved.subrange(0L, 0L)
+    }
     var bounded = if (length == C.LENGTH_UNSET.toLong()) {
         stream.rangeChunkBytes
     } else {
         minOf(length, stream.rangeChunkBytes)
     }
-    if (stream.spec.lengthBytes > position) {
-        bounded = minOf(bounded, stream.spec.lengthBytes - position)
+    if (known) {
+        bounded = minOf(bounded, remaining)
+    }
+    if (bounded <= 0L) {
+        return resolved.subrange(0L, 0L)
     }
     return resolved.subrange(0, bounded)
 }

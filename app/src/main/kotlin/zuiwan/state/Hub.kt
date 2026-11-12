@@ -522,6 +522,11 @@ class Hub(val appContext: Context) {
 
     fun addtrack(playlistId: String, track: Track) {
         scope.launch {
+            if (dao.playlistlinks(playlistId).any { it.trackId == track.id }) {
+                val known = dao.getplaylist(playlistId)
+                shownotice(NoticeKind.INFO, "Already in ${known?.title ?: "Playlist"}", track.title)
+                return@launch
+            }
             if (dao.gettrack(track.id) == null) {
                 dao.puttrack(track.toentity())
             }
@@ -551,6 +556,12 @@ class Hub(val appContext: Context) {
             val pl = dao.getplaylist(playlistId)
             val setVid = dao.getsetvideo(playlistId, trackId)
             dao.unlinktrack(playlistId, trackId)
+            if (pl != null) {
+                val remaining = dao.playlistlinks(playlistId).sortedBy { it.position }.map { it.trackId }
+                if (remaining.isNotEmpty()) {
+                    reorderMutex.withLock { dao.reorderlinks(playlistId, remaining) }
+                }
+            }
             if (pl != null && !pl.remoteId.isNullOrBlank() && pl.editable && !setVid.isNullOrBlank()) {
                 tube.removeremote(pl.remoteId, trackId, setVid)
             }
@@ -561,7 +572,7 @@ class Hub(val appContext: Context) {
         if (orderedTrackIds.isEmpty()) return
         scope.launch {
             reorderMutex.withLock {
-                dao.reorderlinks(playlistId, orderedTrackIds)
+                dao.reorderlinks(playlistId, orderedTrackIds.distinct())
             }
         }
     }

@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import zuiwan.model.AudioSpec
 import zuiwan.model.MusicProvider
 import zuiwan.model.QualityMode
@@ -166,6 +167,15 @@ class StreamEngine(
         }
         return try {
             val now = System.currentTimeMillis()
+            streamCache[videoId]?.let { cached ->
+                val usable = now + 15_000L < cached.expiresAtMs &&
+                    cached.spec.provider !in excludedproviders(videoId, now) &&
+                    (preferred == MusicProvider.AUTO || cached.spec.provider == preferred || allowFallback)
+                if (usable) {
+                    activeProviderFlow.value = cached.spec.provider
+                    return Result.success(cached)
+                }
+            }
             val chain = providerchain(
                 preferred = preferred,
                 allowFallback = allowFallback,
@@ -175,15 +185,19 @@ class StreamEngine(
             )
 
             var lastErr: Throwable? = null
+            val deadline = now + 18_000L
             for (candidate in chain) {
+                if (System.currentTimeMillis() > deadline) break
                 val resolved = try {
-                    resolveone(
-                        provider = candidate,
-                        videoId = videoId,
-                        quality = quality,
-                        hint = hint.copy(explicit = explicit || hint.explicit),
-                        now = now,
-                    )
+                    withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
+                        resolveone(
+                            provider = candidate,
+                            videoId = videoId,
+                            quality = quality,
+                            hint = hint.copy(explicit = explicit || hint.explicit),
+                            now = now,
+                        )
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -232,10 +246,11 @@ class StreamEngine(
             hasMeta || p !in META_PROVIDERS || p == preferred
         }
 
-        val ranked = eligible.sortedWith(
-            compareBy<MusicProvider> { it in blocked }
-                .thenBy { penaltyscore(it, now) },
-        )
+        val native = eligible.filter { it == MusicProvider.YOUTUBE_FAST || it == MusicProvider.YOUTUBE_REMIX }
+        val mirrorsList = eligible.filterNot { it in native }
+        val order = compareBy<MusicProvider> { it in blocked }
+            .thenBy { penaltyscore(it, now) }
+        val ranked = native.sortedWith(order) + mirrorsList.sortedWith(order)
 
         if (preferred == MusicProvider.AUTO) {
             return if (allowFallback) ranked else listOfNotNull(ranked.firstOrNull())
@@ -311,6 +326,7 @@ class StreamEngine(
             .orEmpty() + extraExcluded
 
         val ext = extractor()
+        val fallbackQuality = if (mappedQuality == AudioQuality.LOW) null else AudioQuality.LOW
         for (overrideId in overrideIds) {
             if (overrideId in excluded) continue
             val overrideHints = ContentHints(
@@ -330,7 +346,17 @@ class StreamEngine(
                     audioQuality = mappedQuality,
                     clientPlaybackNonce = generateClientPlaybackNonce(),
                 )
-            }.getOrNull()
+            }.getOrNull() ?: fallbackQuality?.let { alt ->
+                runCatching {
+                    ext.extract(
+                        videoId = videoId,
+                        hints = overrideHints,
+                        excludedClients = excluded,
+                        audioQuality = alt,
+                        clientPlaybackNonce = generateClientPlaybackNonce(),
+                    )
+                }.getOrNull()
+            }
             if (hit != null) {
                 return hit.toresolved(providerTag)
             }
@@ -342,13 +368,25 @@ class StreamEngine(
                 allowSabr = false,
                 allowBoundedRange = true,
             )
-        val extracted = ext.extract(
-            videoId = videoId,
-            hints = hints,
-            excludedClients = excluded,
-            audioQuality = mappedQuality,
-            clientPlaybackNonce = generateClientPlaybackNonce(),
-        ) ?: return null
+        val extracted = runCatching {
+            ext.extract(
+                videoId = videoId,
+                hints = hints,
+                excludedClients = excluded,
+                audioQuality = mappedQuality,
+                clientPlaybackNonce = generateClientPlaybackNonce(),
+            )
+        }.getOrNull() ?: fallbackQuality?.let { alt ->
+            runCatching {
+                ext.extract(
+                    videoId = videoId,
+                    hints = hints,
+                    excludedClients = excluded,
+                    audioQuality = alt,
+                    clientPlaybackNonce = generateClientPlaybackNonce(),
+                )
+            }.getOrNull()
+        } ?: return null
         return extracted.toresolved(providerTag)
     }
 
@@ -430,7 +468,7 @@ class StreamEngine(
             expiresAtMs = expMs.coerceAtLeast(nowMs + 30_000L),
             spec = spec,
             requireBoundedRange = requireBoundedRange,
-            rangeChunkBytes = rangeChunkSizeBytes.takeIf { it > 0L } ?: 1_048_576L,
+            rangeChunkBytes = rangeChunkSizeBytes.takeIf { it >= 262_144L } ?: 1_048_576L,
             useRangeChunks = useRangeChunks,
         )
     }
@@ -438,6 +476,8 @@ class StreamEngine(
     private companion object {
         const val CONFIG_URL =
             "https://raw.githubusercontent.com/ZemerTeam/zemer-cipher/master/library/src/main/assets/player_configs.json"
+
+        const val RESOLVE_TIMEOUT_MS = 9_000L
 
         val META_PROVIDERS = setOf(
             MusicProvider.JIOSAAVN,

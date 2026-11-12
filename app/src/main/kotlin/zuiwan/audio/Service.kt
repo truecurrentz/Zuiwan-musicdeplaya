@@ -49,6 +49,8 @@ class AudioService : MediaSessionService() {
     private var announceSwitch: Boolean = false
     private var lastSwitchAtMs: Long = 0L
     private var stallJob: Job? = null
+    private var endJob: Job? = null
+    private var skipStreak: Int = 0
     private val rebufferTimes = ArrayDeque<Long>()
 
     override fun onCreate() {
@@ -89,7 +91,7 @@ class AudioService : MediaSessionService() {
         )
 
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 50_000, 900, 1_800)
+            .setBufferDurationsMs(20_000, 90_000, 1_200, 2_000)
             .build()
 
         val attrs = AudioAttributes.Builder()
@@ -122,11 +124,16 @@ class AudioService : MediaSessionService() {
                         announceSwitch = false
                         rebufferTimes.clear()
                         stallJob?.cancel()
+                        endJob?.cancel()
                     }
                     syncwatchdog(hub)
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_ENDED) {
+                        onended(hub)
+                        return
+                    }
                     syncwatchdog(hub)
                 }
 
@@ -136,7 +143,14 @@ class AudioService : MediaSessionService() {
 
                 override fun onPlayerError(error: PlaybackException) {
                     val mediaId = player.currentMediaItem?.mediaId ?: return
-                    if (mediaId.startsWith("local_")) return
+                    if (nearend()) {
+                        onended(hub)
+                        return
+                    }
+                    if (mediaId.startsWith("local_")) {
+                        skipbroken(hub)
+                        return
+                    }
                     triggerfallback(hub, mediaId, isStall = false)
                 }
             },
@@ -170,13 +184,16 @@ class AudioService : MediaSessionService() {
         val scheme = item?.localConfiguration?.uri?.scheme?.lowercase().orEmpty()
         if (mediaId == null || mediaId.startsWith("local_") || scheme == "content" || scheme == "file") {
             stallJob?.cancel()
+            endJob?.cancel()
             return
         }
 
         when (player.playbackState) {
             Player.STATE_READY -> {
                 stallJob?.cancel()
+                endJob?.cancel()
                 trackReachedReady = true
+                skipStreak = 0
                 val activeProvider = hub.streams.activeProvider.value
                 hub.streams.markhealthy(activeProvider)
                 if (announceSwitch) {
@@ -190,7 +207,15 @@ class AudioService : MediaSessionService() {
             }
 
             Player.STATE_BUFFERING -> {
-                if (!player.playWhenReady || !hub.settings.value.autoFallback || !isonline()) {
+                if (!player.playWhenReady) {
+                    stallJob?.cancel()
+                    return
+                }
+                if (nearend()) {
+                    scheduleend(hub)
+                    return
+                }
+                if (!hub.settings.value.autoFallback || !isonline()) {
                     stallJob?.cancel()
                     return
                 }
@@ -226,7 +251,11 @@ class AudioService : MediaSessionService() {
                     val curPos = player.currentPosition.coerceAtLeast(0L)
                     val curBuf = player.bufferedPosition.coerceAtLeast(0L)
                     if (curPos <= startPos + 300L && curBuf <= startBuf + 1_500L) {
-                        triggerfallback(hub, mediaId, isStall = true)
+                        if (nearend()) {
+                            onended(hub)
+                        } else {
+                            triggerfallback(hub, mediaId, isStall = true)
+                        }
                     }
                 }
             }
@@ -237,13 +266,79 @@ class AudioService : MediaSessionService() {
         }
     }
 
+    private fun remainingms(): Long {
+        val duration = player.duration
+        if (duration == C.TIME_UNSET || duration <= 0L) return -1L
+        return (duration - player.currentPosition).coerceAtLeast(0L)
+    }
+
+    private fun nearend(): Boolean {
+        val remaining = remainingms()
+        return remaining >= 0L && remaining <= 2_800L
+    }
+
+    private fun skipbroken(hub: Hub) {
+        if (skipStreak >= 3) {
+            player.pause()
+            hub.shownotice(
+                NoticeKind.ERROR,
+                "Playback Unavailable",
+                "Several tracks could not be streamed. Check your connection",
+            )
+            return
+        }
+        skipStreak += 1
+        onended(hub)
+    }
+
+    private fun scheduleend(hub: Hub) {
+        if (endJob?.isActive == true) return
+        endJob = serviceScope.launch {
+            delay(1_400L)
+            if (player.playbackState == Player.STATE_BUFFERING && player.playWhenReady && nearend()) {
+                onended(hub)
+            }
+        }
+    }
+
+    private fun onended(hub: Hub) {
+        stallJob?.cancel()
+        endJob?.cancel()
+        rebufferTimes.clear()
+        lastSwitchAtMs = System.currentTimeMillis()
+        runCatching {
+            val canAdvance = player.mediaItemCount > 1 && player.hasNextMediaItem()
+            when {
+                canAdvance -> {
+                    player.seekToNextMediaItem()
+                    player.play()
+                }
+
+                player.repeatMode == Player.REPEAT_MODE_ALL && player.mediaItemCount > 0 -> {
+                    player.seekTo(0, 0L)
+                    player.play()
+                }
+
+                else -> player.pause()
+            }
+        }
+        syncwatchdog(hub)
+    }
+
     private fun triggerfallback(
         hub: Hub,
         mediaId: String,
         isStall: Boolean,
     ) {
         stallJob?.cancel()
-        if (fallbackCount >= 6) return
+        if (nearend()) {
+            onended(hub)
+            return
+        }
+        if (fallbackCount >= 6) {
+            skipbroken(hub)
+            return
+        }
         fallbackCount += 1
         lastSwitchAtMs = System.currentTimeMillis()
         rebufferTimes.clear()
@@ -300,6 +395,7 @@ class AudioService : MediaSessionService() {
 
     override fun onDestroy() {
         stallJob?.cancel()
+        endJob?.cancel()
         val hub = (application as App).hub
         hub.pilot.detachplayer(player)
         mediaSession?.run {
