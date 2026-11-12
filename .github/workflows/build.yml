@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: zuiwan-${{ github.workflow }}-${{ github.ref }}
@@ -71,17 +72,33 @@ jobs:
           fi
           ls -lh dist/
 
+      - name: Prune Old Artifacts
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select((now - (.created_at | fromdate)) > 172800) | .id' 2>/dev/null \
+            | while read -r ART; do
+                [ -n "$ART" ] && gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/$ART" >/dev/null 2>&1 || true
+              done
+
       - name: Upload Release APK
         uses: actions/upload-artifact@v7
+        continue-on-error: true
         with:
           name: Zuiwan-release
           path: dist/Zuiwan.apk
+          retention-days: 1
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v7
+        continue-on-error: true
         with:
           name: Zuiwan-debug
           path: dist/Zuiwan-debug.apk
+          retention-days: 1
 
       - name: Publish Release with APK
         if: github.event_name != 'pull_request' && (github.ref_name == 'main' || startsWith(github.ref, 'refs/tags/v'))
